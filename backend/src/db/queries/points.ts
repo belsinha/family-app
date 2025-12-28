@@ -23,7 +23,7 @@ export function addPoints(
     throw new Error('Failed to insert point');
   }
   
-  const stmt = db.prepare(`
+    const stmt = db.prepare(`
     SELECT 
       p.*,
       u.name as parent_name
@@ -32,13 +32,19 @@ export function addPoints(
     WHERE p.id = ?
   `);
   stmt.bind([pointId]);
-  const results: any[] = [];
+  const rows: any[] = [];
   while (stmt.step()) {
-    const row = stmt.getAsObject();
-    results.push({ columns: Object.keys(row), values: [Object.values(row)] });
+    rows.push(stmt.getAsObject());
   }
   stmt.free();
   
+  if (rows.length === 0) {
+    throw new Error('Failed to retrieve inserted point');
+  }
+  
+  const columns = Object.keys(rows[0]);
+  const values = rows.map(row => Object.values(row));
+  const results = [{ columns, values }];
   const point = queryToObject<Point>(results);
   
   if (!point) {
@@ -61,12 +67,19 @@ export function getPointsByChildId(childId: number): Point[] {
     ORDER BY p.created_at DESC
   `);
   stmt.bind([childId]);
-  const results: any[] = [];
+  const rows: any[] = [];
   while (stmt.step()) {
-    const row = stmt.getAsObject();
-    results.push({ columns: Object.keys(row), values: [Object.values(row)] });
+    rows.push(stmt.getAsObject());
   }
   stmt.free();
+  
+  if (rows.length === 0) {
+    return [];
+  }
+  
+  const columns = Object.keys(rows[0]);
+  const values = rows.map(row => Object.values(row));
+  const results = [{ columns, values }];
   return queryToObjects<Point>(results);
 }
 
@@ -108,12 +121,19 @@ export function getMostRecentPoint(childId: number): Point | null {
     LIMIT 1
   `);
   stmt.bind([childId]);
-  const results: any[] = [];
+  const rows: any[] = [];
   while (stmt.step()) {
-    const row = stmt.getAsObject();
-    results.push({ columns: Object.keys(row), values: [Object.values(row)] });
+    rows.push(stmt.getAsObject());
   }
   stmt.free();
+  
+  if (rows.length === 0) {
+    return null;
+  }
+  
+  const columns = Object.keys(rows[0]);
+  const values = rows.map(row => Object.values(row));
+  const results = [{ columns, values }];
   return queryToObject<Point>(results);
 }
 
@@ -130,12 +150,19 @@ export function getPointsByChildIdLast7Days(childId: number): Point[] {
     ORDER BY p.created_at DESC
   `);
   stmt.bind([childId]);
-  const results: any[] = [];
+  const rows: any[] = [];
   while (stmt.step()) {
-    const row = stmt.getAsObject();
-    results.push({ columns: Object.keys(row), values: [Object.values(row)] });
+    rows.push(stmt.getAsObject());
   }
   stmt.free();
+  
+  if (rows.length === 0) {
+    return [];
+  }
+  
+  const columns = Object.keys(rows[0]);
+  const values = rows.map(row => Object.values(row));
+  const results = [{ columns, values }];
   return queryToObjects<Point>(results);
 }
 

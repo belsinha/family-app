@@ -93,7 +93,6 @@ router.post('/change-password', authenticate, async (req: AuthRequest, res, next
     }
 
     saveDatabase();
-
     res.json({ success: true, message: 'Password changed successfully' });
   } catch (error) {
     next(error);
