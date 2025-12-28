@@ -33,13 +33,25 @@ export async function initDatabaseConnection(): Promise<Database> {
   // since node_modules is hoisted to the root in npm workspaces
   let initSqlJs: any;
   
-  // Resolve to workspace root (__dirname is backend/src/db, so go up 3 levels)
+  // Try multiple paths: workspace root (monorepo) and current working directory (Render)
   const workspaceRoot = path.resolve(__dirname, '../../..');
-  const sqlJsPath = path.join(workspaceRoot, 'node_modules', 'sql.js', 'dist', 'sql-wasm.js');
+  const cwdRoot = process.cwd();
+  const possiblePaths = [
+    path.join(workspaceRoot, 'node_modules', 'sql.js', 'dist', 'sql-wasm.js'),
+    path.join(cwdRoot, 'node_modules', 'sql.js', 'dist', 'sql-wasm.js'),
+  ];
+  
+  let sqlJsPath: string | null = null;
+  for (const possiblePath of possiblePaths) {
+    if (fs.existsSync(possiblePath)) {
+      sqlJsPath = possiblePath;
+      break;
+    }
+  }
   
   try {
     // Try importing from the resolved file path using file URL
-    if (fs.existsSync(sqlJsPath)) {
+    if (sqlJsPath) {
       const sqlJsUrl = pathToFileURL(sqlJsPath).href;
       const sqlJsModule = await import(sqlJsUrl);
       initSqlJs = sqlJsModule.default || sqlJsModule;
@@ -49,7 +61,7 @@ export async function initDatabaseConnection(): Promise<Database> {
         const sqlJsModule = await import('sql.js/dist/sql-wasm.js');
         initSqlJs = sqlJsModule.default || sqlJsModule;
       } catch (error2) {
-        throw new Error(`sql.js WASM file not found at ${sqlJsPath} and package import also failed`);
+        throw new Error(`sql.js WASM file not found in any of: ${possiblePaths.join(', ')} and package import also failed: ${error2 instanceof Error ? error2.message : String(error2)}`);
       }
     }
   } catch (error1) {
@@ -57,7 +69,10 @@ export async function initDatabaseConnection(): Promise<Database> {
   }
   
   // sql.js in Node.js - download WASM file if not present locally
-  const wasmDir = path.join(process.cwd(), 'node_modules', 'sql.js', 'dist');
+  // Use the same directory where sql-wasm.js was found, or fallback to cwd
+  const wasmDir = sqlJsPath 
+    ? path.dirname(sqlJsPath)
+    : path.join(cwdRoot, 'node_modules', 'sql.js', 'dist');
   const wasmPath = path.join(wasmDir, 'sql-wasm.wasm');
   
   // If WASM doesn't exist, download it
