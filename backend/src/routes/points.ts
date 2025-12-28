@@ -15,7 +15,7 @@ router.post('/', authenticate, requireRole('parent'), async (req: AuthRequest, r
     }
     
     // For anonymous points, don't require authentication (but still require parent role)
-    const parentId = anonymous ? null : req.user?.userId || null;
+    const parentId = anonymous ? undefined : req.user?.userId;
     
     // Use description if provided, otherwise fall back to reason for backward compatibility
     const pointRecord = addPoints(childId, points, type, description || reason, parentId);

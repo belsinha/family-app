@@ -3,7 +3,7 @@ import { getUserByName, getUserByIdWithPassword, updateUserPassword } from '../d
 import { generateToken, comparePassword, hashPassword } from '../utils/auth.js';
 import { authenticate, type AuthRequest } from '../middleware/auth.js';
 import { saveDatabase } from '../db/connection.js';
-import type { User } from '../../../shared/src/types.js';
+import type { User } from '../types.js';
 
 const router = Router();
 

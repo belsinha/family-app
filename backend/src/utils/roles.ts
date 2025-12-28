@@ -1,4 +1,4 @@
-import type { Role } from '../../../shared/src/types';
+import type { Role } from '../types.js';
 
 export function isParent(role: Role): boolean {
   return role === 'parent';

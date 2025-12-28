@@ -1,5 +1,5 @@
 import { getDatabase, queryToObjects, queryToObject, saveDatabase } from '../connection.js';
-import type { Point, PointType } from '../../../shared/src/types.js';
+import type { Point, PointType } from '../../types.js';
 
 export function addPoints(
   childId: number,

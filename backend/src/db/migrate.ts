@@ -1,6 +1,6 @@
 import { getDatabase, saveDatabase, queryToObjects } from './connection.js';
 import { hashPassword } from '../utils/auth.js';
-import type { User } from '../../../shared/src/types.js';
+import type { User } from '../types.js';
 
 export async function migratePasswords() {
   const db = getDatabase();

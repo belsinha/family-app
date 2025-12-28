@@ -28,6 +28,10 @@ export async function initDatabaseConnection(): Promise<Database> {
     return db;
   }
 
+  console.log('Initializing database connection...');
+  console.log('Current working directory:', process.cwd());
+  console.log('__dirname:', __dirname);
+
   // Dynamic import to handle workspace module resolution
   // For sql.js in Node.js ESM, we need to resolve from workspace root
   // since node_modules is hoisted to the root in npm workspaces
@@ -41,12 +45,19 @@ export async function initDatabaseConnection(): Promise<Database> {
     path.join(cwdRoot, 'node_modules', 'sql.js', 'dist', 'sql-wasm.js'),
   ];
   
+  console.log('Checking for sql.js at paths:', possiblePaths);
+  
   let sqlJsPath: string | null = null;
   for (const possiblePath of possiblePaths) {
     if (fs.existsSync(possiblePath)) {
       sqlJsPath = possiblePath;
+      console.log('Found sql.js at:', sqlJsPath);
       break;
     }
+  }
+  
+  if (!sqlJsPath) {
+    console.warn('sql.js not found at any of the checked paths, will try package import');
   }
   
   try {

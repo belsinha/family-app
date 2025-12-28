@@ -1,6 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import { verifyToken } from '../utils/auth.js';
-import type { Role } from '../../../shared/src/types.js';
+import type { Role } from '../types.js';
 
 export interface AuthRequest extends Request {
   user?: {

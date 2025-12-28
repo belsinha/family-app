@@ -1,5 +1,5 @@
 import { getDatabase, queryToObjects, queryToObject } from '../connection.js';
-import type { User, Role } from '../../../shared/src/types.js';
+import type { User, Role } from '../../types.js';
 
 export function getAllUsers(): User[] {
   const db = getDatabase();

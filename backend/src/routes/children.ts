@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { getAllChildren, getChildById, getChildByUserId } from '../db/queries/children.js';
 import { authenticate, requireRole, type AuthRequest } from '../middleware/auth.js';
-import type { Role } from '../../../shared/src/types.js';
+import type { Role } from '../types.js';
 
 const router = Router();
 
