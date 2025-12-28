@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { api } from '../utils/api';
-import type { Child, ChildBalance, Point } from '../../../shared/src/types';
+import type { Child, ChildBalance } from '../../../shared/src/types';
 import PointLog from './PointLog';
 
 interface ChildCardProps {

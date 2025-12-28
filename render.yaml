@@ -11,12 +11,10 @@ services:
       - key: DATABASE_PATH
         value: ./data/family-app.db
 
-  - type: web
+  - type: static
     name: family-app-frontend
-    runtime: node
-    plan: free
-    buildCommand: npm install && cd frontend && npm install && npm run build
-    startCommand: cd frontend && npx serve -s dist -l 10000
+    buildCommand: cd frontend && npm install && npm run build
+    staticPublishPath: frontend/dist
     envVars:
       - key: VITE_API_URL
         value: https://family-app-ksog.onrender.com/api

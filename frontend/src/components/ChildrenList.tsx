@@ -7,7 +7,6 @@ export default function ChildrenList() {
   const [children, setChildren] = useState<Child[]>([]);
   const [balances, setBalances] = useState<Record<number, ChildBalance>>({});
   const [isLoading, setIsLoading] = useState(true);
-  const [isLoadingBalances, setIsLoadingBalances] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const fetchChildren = async () => {
@@ -34,7 +33,6 @@ export default function ChildrenList() {
     const fetchBalances = async () => {
       if (children.length === 0) return;
 
-      setIsLoadingBalances(true);
       try {
         const balancePromises = children.map((child) =>
           api.getChildBalance(child.id).then((balance) => ({ childId: child.id, balance }))
@@ -49,8 +47,6 @@ export default function ChildrenList() {
         setBalances(balancesMap);
       } catch (err) {
         console.error('Failed to load balances:', err);
-      } finally {
-        setIsLoadingBalances(false);
       }
     };
 
