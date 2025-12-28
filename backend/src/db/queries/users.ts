@@ -51,12 +51,19 @@ export function getUserByIdWithPassword(id: number): (User & { password_hash?: s
   const db = getDatabase();
   const stmt = db.prepare('SELECT * FROM users WHERE id = ?');
   stmt.bind([id]);
-  const results: any[] = [];
+  const rows: any[] = [];
   while (stmt.step()) {
-    const row = stmt.getAsObject();
-    results.push({ columns: Object.keys(row), values: [Object.values(row)] });
+    rows.push(stmt.getAsObject());
   }
   stmt.free();
+  
+  if (rows.length === 0) {
+    return null;
+  }
+  
+  const columns = Object.keys(rows[0]);
+  const values = rows.map(row => Object.values(row));
+  const results = [{ columns, values }];
   const user = queryToObject<User & { password_hash?: string }>(results);
   return user;
 }
@@ -65,7 +72,10 @@ export function updateUserPassword(userId: number, passwordHash: string): boolea
   const db = getDatabase();
   const stmt = db.prepare('UPDATE users SET password_hash = ? WHERE id = ?');
   stmt.bind([passwordHash, userId]);
-  const result = stmt.step();
+  stmt.step();
   stmt.free();
-  return result;
+  // For UPDATE statements, step() doesn't reliably indicate success
+  // Verify the update by checking if the user exists and password was changed
+  const updatedUser = getUserByIdWithPassword(userId);
+  return updatedUser !== null && updatedUser.password_hash === passwordHash;
 }
