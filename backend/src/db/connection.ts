@@ -8,11 +8,21 @@ import { pathToFileURL } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Resolve database path relative to backend directory (where this file is located)
-// If config.databasePath is relative, resolve it from the backend directory
-const dbPath = path.isAbsolute(config.databasePath) 
-  ? config.databasePath 
-  : path.resolve(__dirname, '..', config.databasePath);
+// Resolve database path relative to backend directory
+// In production, __dirname will be backend/dist/db, so we need to go up to backend root
+// In development, we resolve from process.cwd() which should be the backend directory
+function resolveDatabasePath(relativePath: string): string {
+  if (path.isAbsolute(relativePath)) {
+    return relativePath;
+  }
+  
+  // When running from backend directory (production: cd backend && npm start)
+  // process.cwd() will be the backend directory
+  const backendRoot = process.cwd();
+  return path.resolve(backendRoot, relativePath);
+}
+
+const dbPath = resolveDatabasePath(config.databasePath);
 const dbDir = path.dirname(dbPath);
 
 // Ensure data directory exists
@@ -37,12 +47,14 @@ export async function initDatabaseConnection(): Promise<Database> {
   // since node_modules is hoisted to the root in npm workspaces
   let initSqlJs: any;
   
-  // Try multiple paths: workspace root (monorepo) and current working directory (Render)
-  const workspaceRoot = path.resolve(__dirname, '../../..');
-  const cwdRoot = process.cwd();
+  // Try multiple paths for sql.js
+  // When building from root with workspaces, node_modules is in root
+  // When running: cd backend && npm start, cwd is backend, so check parent for node_modules
+  const cwdRoot = process.cwd(); // This will be 'backend' when running: cd backend && npm start
+  const parentDir = path.resolve(cwdRoot, '..'); // Parent of backend (workspace root)
   const possiblePaths = [
-    path.join(workspaceRoot, 'node_modules', 'sql.js', 'dist', 'sql-wasm.js'),
-    path.join(cwdRoot, 'node_modules', 'sql.js', 'dist', 'sql-wasm.js'),
+    path.join(cwdRoot, 'node_modules', 'sql.js', 'dist', 'sql-wasm.js'), // backend/node_modules
+    path.join(parentDir, 'node_modules', 'sql.js', 'dist', 'sql-wasm.js'), // root/node_modules (workspace)
   ];
   
   console.log('Checking for sql.js at paths:', possiblePaths);
@@ -80,10 +92,12 @@ export async function initDatabaseConnection(): Promise<Database> {
   }
   
   // sql.js in Node.js - download WASM file if not present locally
-  // Use the same directory where sql-wasm.js was found, or fallback to cwd
+  // Use the same directory where sql-wasm.js was found, or fallback to parent node_modules
   const wasmDir = sqlJsPath 
     ? path.dirname(sqlJsPath)
-    : path.join(cwdRoot, 'node_modules', 'sql.js', 'dist');
+    : (fs.existsSync(path.join(parentDir, 'node_modules', 'sql.js', 'dist'))
+        ? path.join(parentDir, 'node_modules', 'sql.js', 'dist')
+        : path.join(cwdRoot, 'node_modules', 'sql.js', 'dist'));
   const wasmPath = path.join(wasmDir, 'sql-wasm.wasm');
   
   // If WASM doesn't exist, download it
