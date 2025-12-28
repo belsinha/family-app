@@ -16,6 +16,22 @@ app.use(cors({
 app.use(express.json());
 app.use(logger);
 
+// Root route
+app.get('/', (req, res) => {
+  res.json({
+    message: 'Family App API',
+    version: '1.0.0',
+    endpoints: {
+      health: '/health',
+      api: '/api',
+      auth: '/api/auth',
+      users: '/api/users',
+      children: '/api/children',
+      points: '/api/points'
+    }
+  });
+});
+
 // Health check (before database init for quick health checks)
 app.get('/health', (req, res) => {
   res.json({ status: 'ok' });
