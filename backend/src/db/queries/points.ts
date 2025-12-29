@@ -1,190 +1,225 @@
-import { getDatabase, queryToObjects, queryToObject, saveDatabase } from '../connection.js';
+import { getSupabaseClient } from '../supabase.js';
 import type { Point, PointType } from '../../types.js';
 
-export function addPoints(
+export async function addPoints(
   childId: number,
   points: number,
   type: PointType,
   reason?: string,
   parentId?: number
-): Point {
-  const db = getDatabase();
-  db.run(
-    'INSERT INTO points (child_id, points, type, reason, parent_id) VALUES (?, ?, ?, ?, ?)',
-    [childId, points, type, reason || null, parentId || null]
-  );
+): Promise<Point> {
+  const supabase = getSupabaseClient();
   
-  const result = db.exec('SELECT last_insert_rowid() as id');
-  const pointId = result.length > 0 && result[0].values.length > 0 
-    ? result[0].values[0][0] as number 
-    : null;
+  // Insert the point
+  const { data: insertedPoint, error: insertError } = await supabase
+    .from('points')
+    .insert({
+      child_id: childId,
+      points,
+      type,
+      reason: reason || null,
+      parent_id: parentId || null,
+    })
+    .select()
+    .single();
   
-  if (!pointId) {
-    throw new Error('Failed to insert point');
+  if (insertError || !insertedPoint) {
+    throw new Error(`Failed to insert point: ${insertError?.message || 'Unknown error'}`);
   }
   
-    const stmt = db.prepare(`
-    SELECT 
-      p.*,
-      u.name as parent_name
-    FROM points p
-    LEFT JOIN users u ON p.parent_id = u.id
-    WHERE p.id = ?
-  `);
-  stmt.bind([pointId]);
-  const rows: any[] = [];
-  while (stmt.step()) {
-    rows.push(stmt.getAsObject());
-  }
-  stmt.free();
-  
-  if (rows.length === 0) {
-    throw new Error('Failed to retrieve inserted point');
+  // Fetch parent name if parent_id exists
+  let parentName = null;
+  if (insertedPoint.parent_id) {
+    const { data: parent } = await supabase
+      .from('users')
+      .select('name')
+      .eq('id', insertedPoint.parent_id)
+      .single();
+    parentName = parent?.name || null;
   }
   
-  const columns = Object.keys(rows[0]);
-  const values = rows.map(row => Object.values(row));
-  const results = [{ columns, values }];
-  const point = queryToObject<Point>(results);
-  
-  if (!point) {
-    throw new Error('Failed to retrieve inserted point');
-  }
-  
-  saveDatabase();
-  return point;
+  return {
+    ...insertedPoint,
+    parent_name: parentName,
+  } as Point;
 }
 
-export function getPointsByChildId(childId: number): Point[] {
-  const db = getDatabase();
-  const stmt = db.prepare(`
-    SELECT 
-      p.*,
-      u.name as parent_name
-    FROM points p
-    LEFT JOIN users u ON p.parent_id = u.id
-    WHERE p.child_id = ?
-    ORDER BY p.created_at DESC
-  `);
-  stmt.bind([childId]);
-  const rows: any[] = [];
-  while (stmt.step()) {
-    rows.push(stmt.getAsObject());
-  }
-  stmt.free();
+export async function getPointsByChildId(childId: number): Promise<Point[]> {
+  const supabase = getSupabaseClient();
+  const { data: points, error } = await supabase
+    .from('points')
+    .select('*')
+    .eq('child_id', childId)
+    .order('created_at', { ascending: false });
   
-  if (rows.length === 0) {
+  if (error) {
+    throw new Error(`Failed to fetch points: ${error.message}`);
+  }
+  
+  if (!points || points.length === 0) {
     return [];
   }
   
-  const columns = Object.keys(rows[0]);
-  const values = rows.map(row => Object.values(row));
-  const results = [{ columns, values }];
-  return queryToObjects<Point>(results);
-}
-
-export function getChildBalance(childId: number): { bonus: number; demerit: number; balance: number } {
-  const db = getDatabase();
-  const stmt = db.prepare(`
-    SELECT 
-      COALESCE(SUM(CASE WHEN type = 'bonus' THEN points ELSE 0 END), 0) as bonus,
-      COALESCE(SUM(CASE WHEN type = 'demerit' THEN points ELSE 0 END), 0) as demerit
-    FROM points
-    WHERE child_id = ?
-  `);
-  stmt.bind([childId]);
+  // Get unique parent IDs
+  const parentIds = [...new Set(points.map((p: any) => p.parent_id).filter(Boolean))];
   
-  let bonus = 0;
-  let demerit = 0;
-  
-  if (stmt.step()) {
-    const row = stmt.getAsObject() as { bonus: number; demerit: number };
-    bonus = row.bonus || 0;
-    demerit = row.demerit || 0;
+  // Fetch all parent names in one query
+  const parentNames: { [key: number]: string } = {};
+  if (parentIds.length > 0) {
+    const { data: parents } = await supabase
+      .from('users')
+      .select('id, name')
+      .in('id', parentIds);
+    
+    if (parents) {
+      parents.forEach((parent: any) => {
+        parentNames[parent.id] = parent.name;
+      });
+    }
   }
   
-  stmt.free();
+  // Map points with parent names
+  return points.map((point: any) => ({
+    ...point,
+    parent_name: point.parent_id ? (parentNames[point.parent_id] || null) : null,
+  })) as Point[];
+}
+
+export async function getChildBalance(childId: number): Promise<{ bonus: number; demerit: number; balance: number }> {
+  const supabase = getSupabaseClient();
+  
+  // Get bonus points
+  const { data: bonusData, error: bonusError } = await supabase
+    .from('points')
+    .select('points')
+    .eq('child_id', childId)
+    .eq('type', 'bonus');
+  
+  if (bonusError) {
+    throw new Error(`Failed to fetch bonus points: ${bonusError.message}`);
+  }
+  
+  // Get demerit points
+  const { data: demeritData, error: demeritError } = await supabase
+    .from('points')
+    .select('points')
+    .eq('child_id', childId)
+    .eq('type', 'demerit');
+  
+  if (demeritError) {
+    throw new Error(`Failed to fetch demerit points: ${demeritError.message}`);
+  }
+  
+  const bonus = (bonusData || []).reduce((sum, p) => sum + (p.points || 0), 0);
+  const demerit = (demeritData || []).reduce((sum, p) => sum + (p.points || 0), 0);
   const balance = bonus - demerit;
+  
   return { bonus, demerit, balance };
 }
 
-export function getMostRecentPoint(childId: number): Point | null {
-  const db = getDatabase();
-  const stmt = db.prepare(`
-    SELECT 
-      p.*,
-      u.name as parent_name
-    FROM points p
-    LEFT JOIN users u ON p.parent_id = u.id
-    WHERE p.child_id = ? 
-    ORDER BY p.created_at DESC, p.id DESC 
-    LIMIT 1
-  `);
-  stmt.bind([childId]);
-  const rows: any[] = [];
-  while (stmt.step()) {
-    rows.push(stmt.getAsObject());
-  }
-  stmt.free();
+export async function getMostRecentPoint(childId: number): Promise<Point | null> {
+  const supabase = getSupabaseClient();
+  const { data, error } = await supabase
+    .from('points')
+    .select('*')
+    .eq('child_id', childId)
+    .order('created_at', { ascending: false })
+    .order('id', { ascending: false })
+    .limit(1)
+    .single();
   
-  if (rows.length === 0) {
-    return null;
+  if (error) {
+    if (error.code === 'PGRST116') {
+      return null; // Not found
+    }
+    throw new Error(`Failed to fetch most recent point: ${error.message}`);
   }
   
-  const columns = Object.keys(rows[0]);
-  const values = rows.map(row => Object.values(row));
-  const results = [{ columns, values }];
-  return queryToObject<Point>(results);
+  // Fetch parent name if parent_id exists
+  let parentName = null;
+  if (data.parent_id) {
+    const { data: parent } = await supabase
+      .from('users')
+      .select('name')
+      .eq('id', data.parent_id)
+      .single();
+    parentName = parent?.name || null;
+  }
+  
+  return {
+    ...data,
+    parent_name: parentName,
+  } as Point;
 }
 
-export function getPointsByChildIdLast7Days(childId: number): Point[] {
-  const db = getDatabase();
-  const stmt = db.prepare(`
-    SELECT 
-      p.*,
-      u.name as parent_name
-    FROM points p
-    LEFT JOIN users u ON p.parent_id = u.id
-    WHERE p.child_id = ? 
-    AND p.created_at >= datetime('now', '-7 days')
-    ORDER BY p.created_at DESC
-  `);
-  stmt.bind([childId]);
-  const rows: any[] = [];
-  while (stmt.step()) {
-    rows.push(stmt.getAsObject());
-  }
-  stmt.free();
+export async function getPointsByChildIdLast7Days(childId: number): Promise<Point[]> {
+  const supabase = getSupabaseClient();
+  const sevenDaysAgo = new Date();
+  sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
   
-  if (rows.length === 0) {
+  const { data: points, error } = await supabase
+    .from('points')
+    .select('*')
+    .eq('child_id', childId)
+    .gte('created_at', sevenDaysAgo.toISOString())
+    .order('created_at', { ascending: false });
+  
+  if (error) {
+    throw new Error(`Failed to fetch points: ${error.message}`);
+  }
+  
+  if (!points || points.length === 0) {
     return [];
   }
   
-  const columns = Object.keys(rows[0]);
-  const values = rows.map(row => Object.values(row));
-  const results = [{ columns, values }];
-  return queryToObjects<Point>(results);
+  // Get unique parent IDs
+  const parentIds = [...new Set(points.map((p: any) => p.parent_id).filter(Boolean))];
+  
+  // Fetch all parent names in one query
+  const parentNames: { [key: number]: string } = {};
+  if (parentIds.length > 0) {
+    const { data: parents } = await supabase
+      .from('users')
+      .select('id, name')
+      .in('id', parentIds);
+    
+    if (parents) {
+      parents.forEach((parent: any) => {
+        parentNames[parent.id] = parent.name;
+      });
+    }
+  }
+  
+  // Map points with parent names
+  return points.map((point: any) => ({
+    ...point,
+    parent_name: point.parent_id ? (parentNames[point.parent_id] || null) : null,
+  })) as Point[];
 }
 
-export function deletePoint(pointId: number): boolean {
-  const db = getDatabase();
+export async function deletePoint(pointId: number): Promise<boolean> {
+  const supabase = getSupabaseClient();
   
-  // First check if the point exists
-  const checkStmt = db.prepare('SELECT id FROM points WHERE id = ?');
-  checkStmt.bind([pointId]);
-  const exists = checkStmt.step();
-  checkStmt.free();
+  // Check if the point exists
+  const { data: existingPoint, error: checkError } = await supabase
+    .from('points')
+    .select('id')
+    .eq('id', pointId)
+    .single();
   
-  if (!exists) {
+  if (checkError || !existingPoint) {
     return false;
   }
   
   // Delete the point
-  const stmt = db.prepare('DELETE FROM points WHERE id = ?');
-  stmt.bind([pointId]);
-  stmt.step();
-  stmt.free();
+  const { error: deleteError } = await supabase
+    .from('points')
+    .delete()
+    .eq('id', pointId);
   
-  saveDatabase();
+  if (deleteError) {
+    throw new Error(`Failed to delete point: ${deleteError.message}`);
+  }
+  
   return true;
 }

@@ -9,10 +9,10 @@ const router = Router();
 router.get('/', authenticate, async (req: AuthRequest, res, next) => {
   try {
     if (req.user?.role === 'parent') {
-      const children = getAllChildren();
+      const children = await getAllChildren();
       res.json(children);
     } else if (req.user?.role === 'child') {
-      const child = getChildByUserId(req.user.userId);
+      const child = await getChildByUserId(req.user.userId);
       res.json(child ? [child] : []);
     } else {
       res.status(403).json({ error: 'Insufficient permissions' });
@@ -26,7 +26,7 @@ router.get('/', authenticate, async (req: AuthRequest, res, next) => {
 router.get('/:id', authenticate, async (req: AuthRequest, res, next) => {
   try {
     const childId = parseInt(req.params.id, 10);
-    const child = getChildById(childId);
+    const child = await getChildById(childId);
     
     if (!child) {
       return res.status(404).json({ error: 'Child not found' });

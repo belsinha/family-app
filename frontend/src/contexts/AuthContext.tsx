@@ -50,24 +50,41 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     let attemptCount = 0;
 
     const isBackendSleepState = (error: unknown, response?: Response): boolean => {
-      // Network errors (connection refused, etc.)
-      if (error instanceof TypeError && error.message === 'Failed to fetch') {
-        return true;
+      // Network errors (connection refused, CORS errors, etc.)
+      if (error instanceof TypeError) {
+        const message = error.message.toLowerCase();
+        if (message.includes('failed to fetch') || 
+            message.includes('networkerror') ||
+            message.includes('network request failed') ||
+            message.includes('load failed')) {
+          return true;
+        }
       }
       
-      // AbortError (timeout)
+      // AbortError (timeout from AbortController)
       if (error instanceof DOMException && error.name === 'AbortError') {
         return true;
       }
       
       // HTTP errors indicating backend unavailable
-      if (response && [502, 503, 504].includes(response.status)) {
-        return true;
+      if (response) {
+        // 502 Bad Gateway - upstream server error
+        // 503 Service Unavailable - server temporarily unavailable
+        // 504 Gateway Timeout - upstream server timeout
+        // 408 Request Timeout - request took too long
+        if ([502, 503, 504, 408].includes(response.status)) {
+          return true;
+        }
       }
 
-      // Timeout errors
-      if (error instanceof Error && error.message.includes('timeout')) {
-        return true;
+      // Timeout errors in error messages
+      if (error instanceof Error) {
+        const message = error.message.toLowerCase();
+        if (message.includes('timeout') || 
+            message.includes('timed out') ||
+            message.includes('aborted')) {
+          return true;
+        }
       }
 
       return false;
@@ -75,7 +92,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     const makeRequest = async (): Promise<Response> => {
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+      const timeoutId = setTimeout(() => {
+        controller.abort();
+      }, REQUEST_TIMEOUT_MS);
 
       try {
         const response = await fetch(apiUrl, {
@@ -90,6 +109,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return response;
       } catch (error) {
         clearTimeout(timeoutId);
+        // If it's a timeout/abort error, make sure it's properly identified
+        if (error instanceof DOMException && error.name === 'AbortError') {
+          throw error;
+        }
         throw error;
       }
     };
@@ -105,10 +128,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
 
       try {
-        // If this is not the first attempt, we're in wake-up state
-        if (attemptCount > 1) {
-          onStatusChange?.('waking-up');
-        } else {
+        // Show authenticating status on first attempt
+        if (attemptCount === 1) {
           onStatusChange?.('authenticating');
         }
 
@@ -116,6 +137,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
         // Check for backend sleep state HTTP errors
         if (!response.ok && isBackendSleepState(null, response)) {
+          // Show wake-up message immediately when we detect sleep state
+          onStatusChange?.('waking-up');
           // Wait before retrying
           await new Promise(resolve => setTimeout(resolve, RETRY_INTERVAL_MS));
           continue;
@@ -145,6 +168,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       } catch (error) {
         // Check if this is a backend sleep state error
         if (isBackendSleepState(error)) {
+          // Show wake-up message immediately when we detect sleep state
+          onStatusChange?.('waking-up');
           // Wait before retrying
           await new Promise(resolve => setTimeout(resolve, RETRY_INTERVAL_MS));
           continue;

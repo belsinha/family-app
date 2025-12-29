@@ -1,81 +1,99 @@
-import { getDatabase, queryToObjects, queryToObject } from '../connection.js';
+import { getSupabaseClient } from '../supabase.js';
 import type { User, Role } from '../../types.js';
 
-export function getAllUsers(): User[] {
-  const db = getDatabase();
-  const result = db.exec('SELECT * FROM users');
-  return queryToObjects<User>(result);
-}
-
-export function getUserById(id: number): User | null {
-  const db = getDatabase();
-  const stmt = db.prepare('SELECT * FROM users WHERE id = ?');
-  stmt.bind([id]);
-  const results: any[] = [];
-  while (stmt.step()) {
-    const row = stmt.getAsObject();
-    results.push({ columns: Object.keys(row), values: [Object.values(row)] });
-  }
-  stmt.free();
-  return queryToObject<User>(results);
-}
-
-export function getUsersByRole(role: Role): User[] {
-  const db = getDatabase();
-  const stmt = db.prepare('SELECT * FROM users WHERE role = ?');
-  stmt.bind([role]);
-  const results: any[] = [];
-  while (stmt.step()) {
-    const row = stmt.getAsObject();
-    results.push({ columns: Object.keys(row), values: [Object.values(row)] });
-  }
-  stmt.free();
-  return queryToObjects<User>(results);
-}
-
-export function getUserByName(name: string): (User & { password_hash?: string }) | null {
-  const db = getDatabase();
-  const stmt = db.prepare('SELECT * FROM users WHERE name = ?');
-  stmt.bind([name]);
-  const results: any[] = [];
-  while (stmt.step()) {
-    const row = stmt.getAsObject();
-    results.push({ columns: Object.keys(row), values: [Object.values(row)] });
-  }
-  stmt.free();
-  const user = queryToObject<User & { password_hash?: string }>(results);
-  return user;
-}
-
-export function getUserByIdWithPassword(id: number): (User & { password_hash?: string }) | null {
-  const db = getDatabase();
-  const stmt = db.prepare('SELECT * FROM users WHERE id = ?');
-  stmt.bind([id]);
-  const rows: any[] = [];
-  while (stmt.step()) {
-    rows.push(stmt.getAsObject());
-  }
-  stmt.free();
+export async function getAllUsers(): Promise<User[]> {
+  const supabase = getSupabaseClient();
+  const { data, error } = await supabase
+    .from('users')
+    .select('id, name, role, house_id');
   
-  if (rows.length === 0) {
-    return null;
+  if (error) {
+    throw new Error(`Failed to fetch users: ${error.message}`);
   }
   
-  const columns = Object.keys(rows[0]);
-  const values = rows.map(row => Object.values(row));
-  const results = [{ columns, values }];
-  const user = queryToObject<User & { password_hash?: string }>(results);
-  return user;
+  return (data || []) as User[];
 }
 
-export function updateUserPassword(userId: number, passwordHash: string): boolean {
-  const db = getDatabase();
-  const stmt = db.prepare('UPDATE users SET password_hash = ? WHERE id = ?');
-  stmt.bind([passwordHash, userId]);
-  stmt.step();
-  stmt.free();
-  // For UPDATE statements, step() doesn't reliably indicate success
-  // Verify the update by checking if the user exists and password was changed
-  const updatedUser = getUserByIdWithPassword(userId);
+export async function getUserById(id: number): Promise<User | null> {
+  const supabase = getSupabaseClient();
+  const { data, error } = await supabase
+    .from('users')
+    .select('id, name, role, house_id')
+    .eq('id', id)
+    .single();
+  
+  if (error) {
+    if (error.code === 'PGRST116') {
+      return null; // Not found
+    }
+    throw new Error(`Failed to fetch user: ${error.message}`);
+  }
+  
+  return data as User | null;
+}
+
+export async function getUsersByRole(role: Role): Promise<User[]> {
+  const supabase = getSupabaseClient();
+  const { data, error } = await supabase
+    .from('users')
+    .select('id, name, role, house_id')
+    .eq('role', role);
+  
+  if (error) {
+    throw new Error(`Failed to fetch users by role: ${error.message}`);
+  }
+  
+  return (data || []) as User[];
+}
+
+export async function getUserByName(name: string): Promise<(User & { password_hash?: string }) | null> {
+  const supabase = getSupabaseClient();
+  const { data, error } = await supabase
+    .from('users')
+    .select('id, name, role, house_id, password_hash')
+    .eq('name', name)
+    .single();
+  
+  if (error) {
+    if (error.code === 'PGRST116') {
+      return null; // Not found
+    }
+    throw new Error(`Failed to fetch user by name: ${error.message}`);
+  }
+  
+  return data as (User & { password_hash?: string }) | null;
+}
+
+export async function getUserByIdWithPassword(id: number): Promise<(User & { password_hash?: string }) | null> {
+  const supabase = getSupabaseClient();
+  const { data, error } = await supabase
+    .from('users')
+    .select('id, name, role, house_id, password_hash')
+    .eq('id', id)
+    .single();
+  
+  if (error) {
+    if (error.code === 'PGRST116') {
+      return null; // Not found
+    }
+    throw new Error(`Failed to fetch user with password: ${error.message}`);
+  }
+  
+  return data as (User & { password_hash?: string }) | null;
+}
+
+export async function updateUserPassword(userId: number, passwordHash: string): Promise<boolean> {
+  const supabase = getSupabaseClient();
+  const { error } = await supabase
+    .from('users')
+    .update({ password_hash: passwordHash })
+    .eq('id', userId);
+  
+  if (error) {
+    throw new Error(`Failed to update password: ${error.message}`);
+  }
+  
+  // Verify the update
+  const updatedUser = await getUserByIdWithPassword(userId);
   return updatedUser !== null && updatedUser.password_hash === passwordHash;
 }

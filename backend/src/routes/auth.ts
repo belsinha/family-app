@@ -2,7 +2,6 @@ import { Router } from 'express';
 import { getUserByName, getUserByIdWithPassword, updateUserPassword } from '../db/queries/users.js';
 import { generateToken, comparePassword, hashPassword } from '../utils/auth.js';
 import { authenticate, type AuthRequest } from '../middleware/auth.js';
-import { saveDatabase } from '../db/connection.js';
 import type { User } from '../types.js';
 
 const router = Router();
@@ -25,7 +24,7 @@ router.post('/login', async (req, res, next) => {
       return res.status(400).json({ error: 'Name and password are required' });
     }
 
-    const user = getUserByName(name);
+    const user = await getUserByName(name);
     if (!user) {
       return res.status(401).json({ error: 'Invalid credentials' });
     }
@@ -71,7 +70,7 @@ router.post('/change-password', authenticate, async (req: AuthRequest, res, next
       return res.status(401).json({ error: 'Authentication required' });
     }
 
-    const user = getUserByIdWithPassword(req.user.userId);
+    const user = await getUserByIdWithPassword(req.user.userId);
     if (!user) {
       return res.status(404).json({ error: 'User not found' });
     }
@@ -86,13 +85,11 @@ router.post('/change-password', authenticate, async (req: AuthRequest, res, next
     }
 
     const newPasswordHash = await hashPassword(newPassword);
-    const updated = updateUserPassword(req.user.userId, newPasswordHash);
+    const updated = await updateUserPassword(req.user.userId, newPasswordHash);
     
     if (!updated) {
       return res.status(500).json({ error: 'Failed to update password' });
     }
-
-    saveDatabase();
     res.json({ success: true, message: 'Password changed successfully' });
   } catch (error) {
     next(error);

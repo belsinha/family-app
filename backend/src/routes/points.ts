@@ -18,7 +18,7 @@ router.post('/', authenticate, requireRole('parent'), async (req: AuthRequest, r
     const parentId = anonymous ? undefined : req.user?.userId;
     
     // Use description if provided, otherwise fall back to reason for backward compatibility
-    const pointRecord = addPoints(childId, points, type, description || reason, parentId);
+    const pointRecord = await addPoints(childId, points, type, description || reason, parentId);
     res.status(201).json(pointRecord);
   } catch (error) {
     next(error);
@@ -32,13 +32,13 @@ router.get('/child/:childId', authenticate, async (req: AuthRequest, res, next) 
     
     // If child user, verify they're accessing their own data
     if (req.user?.role === 'child') {
-      const child = getChildByUserId(req.user.userId);
+      const child = await getChildByUserId(req.user.userId);
       if (!child || child.id !== childId) {
         return res.status(403).json({ error: 'Access denied' });
       }
     }
     
-    const points = getPointsByChildId(childId);
+    const points = await getPointsByChildId(childId);
     res.json(points);
   } catch (error) {
     next(error);
@@ -52,13 +52,13 @@ router.get('/child/:childId/balance', authenticate, async (req: AuthRequest, res
     
     // If child user, verify they're accessing their own data
     if (req.user?.role === 'child') {
-      const child = getChildByUserId(req.user.userId);
+      const child = await getChildByUserId(req.user.userId);
       if (!child || child.id !== childId) {
         return res.status(403).json({ error: 'Access denied' });
       }
     }
     
-    const { bonus, demerit, balance } = getChildBalance(childId);
+    const { bonus, demerit, balance } = await getChildBalance(childId);
     res.json({ childId, bonus, demerit, balance });
   } catch (error) {
     next(error);
@@ -72,13 +72,13 @@ router.get('/child/:childId/most-recent', authenticate, async (req: AuthRequest,
     
     // If child user, verify they're accessing their own data
     if (req.user?.role === 'child') {
-      const child = getChildByUserId(req.user.userId);
+      const child = await getChildByUserId(req.user.userId);
       if (!child || child.id !== childId) {
         return res.status(403).json({ error: 'Access denied' });
       }
     }
     
-    const point = getMostRecentPoint(childId);
+    const point = await getMostRecentPoint(childId);
     if (!point) {
       return res.status(404).json({ error: 'No points found' });
     }
@@ -95,13 +95,13 @@ router.get('/child/:childId/last-7-days', authenticate, async (req: AuthRequest,
     
     // If child user, verify they're accessing their own data
     if (req.user?.role === 'child') {
-      const child = getChildByUserId(req.user.userId);
+      const child = await getChildByUserId(req.user.userId);
       if (!child || child.id !== childId) {
         return res.status(403).json({ error: 'Access denied' });
       }
     }
     
-    const points = getPointsByChildIdLast7Days(childId);
+    const points = await getPointsByChildIdLast7Days(childId);
     res.json(points);
   } catch (error) {
     next(error);
@@ -117,7 +117,7 @@ router.delete('/:pointId', authenticate, requireRole('parent'), async (req: Auth
       return res.status(400).json({ error: 'Invalid point ID' });
     }
     
-    const deleted = deletePoint(pointId);
+    const deleted = await deletePoint(pointId);
     
     if (!deleted) {
       return res.status(404).json({ error: 'Point not found' });
