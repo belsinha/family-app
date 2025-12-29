@@ -49,3 +49,4 @@ CREATE INDEX IF NOT EXISTS idx_points_child_id ON points(child_id);
 CREATE INDEX IF NOT EXISTS idx_points_parent_id ON points(parent_id);
 CREATE INDEX IF NOT EXISTS idx_points_created_at ON points(created_at);
 
+

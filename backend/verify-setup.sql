@@ -32,3 +32,4 @@ UNION ALL
 SELECT 
   'points' as table_name, COUNT(*) as row_count FROM points;
 
+

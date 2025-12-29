@@ -22,3 +22,4 @@ if (fs.existsSync(srcPath)) {
   console.warn('⚠ schema.sql not found at:', srcPath);
 }
 
+

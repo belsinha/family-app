@@ -37,3 +37,4 @@ CREATE TABLE IF NOT EXISTS points (
   FOREIGN KEY (parent_id) REFERENCES users(id)
 );
 
+

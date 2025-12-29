@@ -36,3 +36,4 @@ export async function initSupabaseConnection(): Promise<SupabaseClient> {
   return client;
 }
 
+
