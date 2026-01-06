@@ -42,17 +42,11 @@ export default function PointLog({ childId, childName, onClose }: PointLogProps)
 
   // Create a map of point_id to conversion for quick lookup
   const conversionMap = new Map<number, BitcoinConversion>();
-  const pointIdSet = new Set(points.map(p => p.id));
   conversions.forEach((conv) => {
     if (conv.point_id) {
       conversionMap.set(conv.point_id, conv);
     }
   });
-
-  // Find conversions without matching points (shouldn't happen with CASCADE, but handle legacy data)
-  const orphanedConversions = conversions.filter(conv => 
-    conv.point_id !== null && !pointIdSet.has(conv.point_id)
-  );
 
   const sortedPoints = [...points].sort((a, b) => {
     if (sortBy === 'recent') {
@@ -138,11 +132,6 @@ export default function PointLog({ childId, childName, onClose }: PointLogProps)
           ) : sortedPoints.length === 0 ? (
             <div className="text-center py-12">
               <p className="text-gray-600">No points recorded.</p>
-              {conversions.length > 0 && (
-                <p className="text-sm text-gray-500 mt-2">
-                  {conversions.length} Bitcoin conversion{conversions.length !== 1 ? 's' : ''} found, but no matching points.
-                </p>
-              )}
             </div>
           ) : (
             <div className="space-y-3">
@@ -159,9 +148,9 @@ export default function PointLog({ childId, childName, onClose }: PointLogProps)
                   >
                     <div className="flex items-start justify-between">
                       <div className="flex-1">
-                        <div className="flex items-center gap-2 mb-1">
+                        <div className="flex items-center gap-2 mb-2">
                           <span
-                            className={`font-semibold ${
+                            className={`font-semibold text-lg ${
                               point.type === 'bonus' ? 'text-green-700' : 'text-red-700'
                             }`}
                           >
@@ -178,36 +167,46 @@ export default function PointLog({ childId, childName, onClose }: PointLogProps)
                           </span>
                         </div>
                         {point.reason && (
-                          <p className="text-sm text-gray-700 mt-1">{point.reason}</p>
+                          <p className="text-sm text-gray-700 mb-2">{point.reason}</p>
                         )}
+                        
+                        {/* Bitcoin conversion info integrated into the point entry */}
                         {conversion && (
-                          <div className="mt-2 p-2 bg-blue-50 border border-blue-200 rounded">
-                            <div className="text-xs font-semibold text-blue-900 mb-1">Bitcoin Conversion</div>
-                            <div className="grid grid-cols-2 gap-2 text-xs">
-                              <div>
-                                <span className="text-blue-700">Satoshis:</span>
-                                <span className="font-medium text-blue-900 ml-1">
+                          <div className={`mt-2 pt-2 border-t ${
+                            point.type === 'bonus' ? 'border-green-300' : 'border-red-300'
+                          }`}>
+                            <div className="text-xs font-semibold text-gray-600 mb-1.5">Bitcoin Conversion</div>
+                            <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs">
+                              <div className="flex justify-between">
+                                <span className="text-gray-600">Satoshis:</span>
+                                <span className={`font-medium ${
+                                  conversion.satoshis >= 0 ? 'text-green-700' : 'text-red-700'
+                                }`}>
                                   {conversion.satoshis > 0 ? '+' : ''}{conversion.satoshis.toLocaleString('en-US')}
                                 </span>
                               </div>
-                              <div>
-                                <span className="text-blue-700">BTC:</span>
-                                <span className="font-medium text-blue-900 ml-1">
+                              <div className="flex justify-between">
+                                <span className="text-gray-600">BTC:</span>
+                                <span className={`font-medium ${
+                                  Number(conversion.btc_amount) >= 0 ? 'text-green-700' : 'text-red-700'
+                                }`}>
                                   {Number(conversion.btc_amount) > 0 ? '+' : ''}{Number(conversion.btc_amount).toFixed(8)}
                                 </span>
                               </div>
-                              <div>
-                                <span className="text-blue-700">USD Value:</span>
-                                <span className="font-medium text-blue-900 ml-1">
+                              <div className="flex justify-between">
+                                <span className="text-gray-600">USD Value:</span>
+                                <span className={`font-medium ${
+                                  Number(conversion.usd_value) >= 0 ? 'text-green-700' : 'text-red-700'
+                                }`}>
                                   ${Number(conversion.usd_value).toLocaleString('en-US', { 
                                     minimumFractionDigits: 2, 
                                     maximumFractionDigits: 2 
                                   })}
                                 </span>
                               </div>
-                              <div>
-                                <span className="text-blue-700">Price Used:</span>
-                                <span className="font-medium text-blue-900 ml-1">
+                              <div className="flex justify-between">
+                                <span className="text-gray-600">Price Used:</span>
+                                <span className="font-medium text-gray-700">
                                   ${Number(conversion.price_usd).toLocaleString('en-US', { 
                                     minimumFractionDigits: 2, 
                                     maximumFractionDigits: 2 
@@ -217,6 +216,7 @@ export default function PointLog({ childId, childName, onClose }: PointLogProps)
                             </div>
                           </div>
                         )}
+                        
                         <div className="mt-2 flex items-center gap-2">
                           <span className="text-xs font-semibold text-gray-500">Given by:</span>
                           <span className={`text-sm font-semibold ${
@@ -228,71 +228,13 @@ export default function PointLog({ childId, childName, onClose }: PointLogProps)
                           </span>
                         </div>
                       </div>
-                      <div className="text-sm text-gray-500 ml-4">
+                      <div className="text-sm text-gray-500 ml-4 whitespace-nowrap">
                         {new Date(point.created_at).toLocaleString()}
                       </div>
                     </div>
                   </div>
                 );
               })}
-            </div>
-          )}
-
-          {/* Show orphaned conversions (conversions without matching points) */}
-          {orphanedConversions.length > 0 && (
-            <div className="mt-6 pt-6 border-t border-gray-300">
-              <h3 className="text-lg font-semibold text-gray-700 mb-3">Historical Bitcoin Conversions</h3>
-              <div className="space-y-3">
-                {orphanedConversions.map((conversion) => (
-                  <div
-                    key={conversion.id}
-                    className="p-4 rounded-lg border bg-blue-50 border-blue-200"
-                  >
-                    <div className="flex items-start justify-between">
-                      <div className="flex-1">
-                        <div className="text-xs font-semibold text-blue-900 mb-2">
-                          Bitcoin Conversion (Point Removed)
-                        </div>
-                        <div className="grid grid-cols-2 gap-2 text-xs">
-                          <div>
-                            <span className="text-blue-700">Satoshis:</span>
-                            <span className="font-medium text-blue-900 ml-1">
-                              {conversion.satoshis > 0 ? '+' : ''}{conversion.satoshis.toLocaleString('en-US')}
-                            </span>
-                          </div>
-                          <div>
-                            <span className="text-blue-700">BTC:</span>
-                            <span className="font-medium text-blue-900 ml-1">
-                              {Number(conversion.btc_amount) > 0 ? '+' : ''}{Number(conversion.btc_amount).toFixed(8)}
-                            </span>
-                          </div>
-                          <div>
-                            <span className="text-blue-700">USD Value:</span>
-                            <span className="font-medium text-blue-900 ml-1">
-                              ${Number(conversion.usd_value).toLocaleString('en-US', { 
-                                minimumFractionDigits: 2, 
-                                maximumFractionDigits: 2 
-                              })}
-                            </span>
-                          </div>
-                          <div>
-                            <span className="text-blue-700">Price Used:</span>
-                            <span className="font-medium text-blue-900 ml-1">
-                              ${Number(conversion.price_usd).toLocaleString('en-US', { 
-                                minimumFractionDigits: 2, 
-                                maximumFractionDigits: 2 
-                              })}
-                            </span>
-                          </div>
-                        </div>
-                      </div>
-                      <div className="text-sm text-gray-500 ml-4">
-                        {new Date(conversion.created_at).toLocaleString()}
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
             </div>
           )}
         </div>
