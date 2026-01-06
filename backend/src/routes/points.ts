@@ -2,8 +2,14 @@ import { Router } from 'express';
 import { addPoints, getPointsByChildId, getChildBalance, deletePoint, getMostRecentPoint, getPointsByChildIdLast7Days } from '../db/queries/points.js';
 import { authenticate, requireRole, type AuthRequest } from '../middleware/auth.js';
 import { getChildByUserId } from '../db/queries/children.js';
+import { getOrFetchPrice } from '../services/bitcoin.js';
+import { createConversion } from '../db/queries/bitcoin.js';
 
 const router = Router();
+
+// Constants for conversion
+const SATOSHIS_PER_BONUS_POINT = 5_000;
+const SATOSHIS_PER_BTC = 100_000_000;
 
 // Add points - only parents can do this
 router.post('/', authenticate, requireRole('parent'), async (req: AuthRequest, res, next) => {
@@ -19,6 +25,37 @@ router.post('/', authenticate, requireRole('parent'), async (req: AuthRequest, r
     
     // Use description if provided, otherwise fall back to reason for backward compatibility
     const pointRecord = await addPoints(childId, points, type, description || reason, parentId);
+    
+    // Automatically convert bonus points to Bitcoin
+    if (type === 'bonus' && points > 0) {
+      try {
+        const priceData = await getOrFetchPrice();
+        
+        if (priceData) {
+          // Calculate conversion
+          const satoshis = points * SATOSHIS_PER_BONUS_POINT;
+          const btcAmount = satoshis / SATOSHIS_PER_BTC;
+          const usdValue = btcAmount * priceData.price_usd;
+          
+          // Create conversion record automatically
+          await createConversion({
+            childId,
+            bonusPointsConverted: points,
+            satoshis,
+            btcAmount,
+            usdValue,
+            priceUsd: priceData.price_usd,
+            priceTimestamp: priceData.fetched_at,
+            parentId: parentId,
+          });
+        }
+        // If price unavailable, silently continue - point is still added
+      } catch (error) {
+        // Log error but don't fail the point addition
+        console.warn('Failed to auto-convert bonus points to Bitcoin:', error);
+      }
+    }
+    
     res.status(201).json(pointRecord);
   } catch (error) {
     next(error);

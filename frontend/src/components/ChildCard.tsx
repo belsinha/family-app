@@ -1,8 +1,7 @@
 import { useState, useEffect } from 'react';
 import { api } from '../utils/api';
-import type { Child, ChildBalance } from '../../../shared/src/types';
+import type { Child, ChildBalance, ChildBitcoinBalance } from '../../../shared/src/types';
 import PointLog from './PointLog';
-import BitcoinConversion from './BitcoinConversion';
 import BitcoinConversionHistory from './BitcoinConversionHistory';
 
 interface ChildCardProps {
@@ -21,8 +20,9 @@ export default function ChildCard({ child, initialBalance, onBalanceUpdate }: Ch
   const [description, setDescription] = useState('');
   const [isAnonymous, setIsAnonymous] = useState(false);
   const [showPointLog, setShowPointLog] = useState(false);
-  const [showBitcoinConversion, setShowBitcoinConversion] = useState(false);
   const [showBitcoinHistory, setShowBitcoinHistory] = useState(false);
+  const [bitcoinBalance, setBitcoinBalance] = useState<ChildBitcoinBalance | null>(null);
+  const [bitcoinPrice, setBitcoinPrice] = useState<{ price_usd: number; fetched_at: string } | null>(null);
 
   // Update balance when initialBalance prop changes (e.g., when balances load from API)
   useEffect(() => {
@@ -43,6 +43,45 @@ export default function ChildCard({ child, initialBalance, onBalanceUpdate }: Ch
     checkForRecentPoint();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [child.id, balance.balance]);
+
+  // Load Bitcoin balance and price
+  useEffect(() => {
+    const loadBitcoinData = async () => {
+      try {
+        const [balanceData, priceData] = await Promise.all([
+          api.getBitcoinBalance(child.id),
+          api.getBitcoinPrice(),
+        ]);
+        setBitcoinBalance(balanceData);
+        setBitcoinPrice(priceData);
+      } catch (err) {
+        // Silently fail - Bitcoin balance is optional
+        console.warn('Failed to load Bitcoin balance:', err);
+      }
+    };
+
+    loadBitcoinData();
+
+    // Refresh every 30 seconds to update USD value with current price
+    const interval = setInterval(loadBitcoinData, 30000);
+    return () => clearInterval(interval);
+  }, [child.id]);
+
+  // Update Bitcoin balance when points are added
+  useEffect(() => {
+    const updateBitcoinBalance = async () => {
+      try {
+        const balanceData = await api.getBitcoinBalance(child.id);
+        setBitcoinBalance(balanceData);
+      } catch (err) {
+        // Silently fail
+      }
+    };
+
+    if (balance.balance !== initialBalance.balance) {
+      updateBitcoinBalance();
+    }
+  }, [balance.balance, child.id, initialBalance.balance]);
 
   const handleAddPoints = async (type: 'bonus' | 'demerit') => {
     if (showDescriptionInput !== type) {
@@ -67,6 +106,16 @@ export default function ChildCard({ child, initialBalance, onBalanceUpdate }: Ch
       const newBalance = await api.getChildBalance(child.id);
       setBalance(newBalance);
       onBalanceUpdate(child.id, newBalance);
+      
+      // Update Bitcoin balance if bonus point was added
+      if (type === 'bonus') {
+        try {
+          const bitcoinData = await api.getBitcoinBalance(child.id);
+          setBitcoinBalance(bitcoinData);
+        } catch (err) {
+          // Silently fail
+        }
+      }
       
       setHasRecentPoint(true);
       setDescription('');
@@ -96,6 +145,14 @@ export default function ChildCard({ child, initialBalance, onBalanceUpdate }: Ch
       const newBalance = await api.getChildBalance(child.id);
       setBalance(newBalance);
       onBalanceUpdate(child.id, newBalance);
+      
+      // Update Bitcoin balance after undo
+      try {
+        const bitcoinData = await api.getBitcoinBalance(child.id);
+        setBitcoinBalance(bitcoinData);
+      } catch (err) {
+        // Silently fail
+      }
       
       await checkForRecentPoint();
       setSuccess('Last action undone successfully!');
@@ -154,6 +211,31 @@ export default function ChildCard({ child, initialBalance, onBalanceUpdate }: Ch
           <p className="text-2xl font-bold text-red-600">{balance.demerit}</p>
         </div>
       </div>
+
+      {bitcoinBalance && bitcoinBalance.totalSatoshis > 0 && (
+        <div className="mb-4 p-4 bg-gradient-to-r from-orange-50 to-yellow-50 border border-orange-200 rounded-lg">
+          <div className="text-center">
+            <p className="text-sm text-gray-600 mb-1">Bitcoin Balance</p>
+            <p className="text-3xl font-bold text-orange-600">
+              ${bitcoinBalance.currentUsdValue.toLocaleString('en-US', { 
+                minimumFractionDigits: 2, 
+                maximumFractionDigits: 2 
+              })}
+            </p>
+            <p className="text-xs text-gray-500 mt-1">
+              {bitcoinBalance.totalBtc.toFixed(8)} BTC ({bitcoinBalance.totalSatoshis.toLocaleString('en-US')} satoshis)
+            </p>
+            {bitcoinPrice && (
+              <p className="text-xs text-gray-400 mt-1">
+                @ ${bitcoinPrice.price_usd.toLocaleString('en-US', { 
+                  minimumFractionDigits: 2, 
+                  maximumFractionDigits: 2 
+                })}/BTC
+              </p>
+            )}
+          </div>
+        </div>
+      )}
 
       <div className="space-y-3">
         {showDescriptionInput === 'bonus' && (

@@ -39,6 +39,14 @@ export interface ChildBalance {
   balance: number;
 }
 
+export interface ChildBitcoinBalance {
+  childId: number;
+  totalSatoshis: number;
+  totalBtc: number;
+  currentUsdValue: number;
+  priceUsd: number;
+}
+
 // API Request/Response types
 export interface AddPointsRequest {
   childId: number;

@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { api } from '../utils/api';
-import type { Child, ChildBalance, Point } from '../../../shared/src/types';
+import type { Child, ChildBalance, Point, ChildBitcoinBalance } from '../../../shared/src/types';
 import BitcoinPrice from './BitcoinPrice';
 import BitcoinConversionHistory from './BitcoinConversionHistory';
 
@@ -10,6 +10,8 @@ export default function ChildView() {
   const [child, setChild] = useState<Child | null>(null);
   const [balance, setBalance] = useState<ChildBalance | null>(null);
   const [points, setPoints] = useState<Point[]>([]);
+  const [bitcoinBalance, setBitcoinBalance] = useState<ChildBitcoinBalance | null>(null);
+  const [bitcoinPrice, setBitcoinPrice] = useState<{ price_usd: number; fetched_at: string } | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -31,14 +33,18 @@ export default function ChildView() {
 
         setChild(childRecord);
 
-        // Load balance and points (last 7 days)
-        const [balanceData, pointsData] = await Promise.all([
+        // Load balance, points, and Bitcoin data
+        const [balanceData, pointsData, bitcoinData, priceData] = await Promise.all([
           api.getChildBalance(childRecord.id),
           api.getPointsByChildIdLast7Days(childRecord.id),
+          api.getBitcoinBalance(childRecord.id).catch(() => null),
+          api.getBitcoinPrice().catch(() => null),
         ]);
 
         setBalance(balanceData);
         setPoints(pointsData);
+        setBitcoinBalance(bitcoinData);
+        setBitcoinPrice(priceData);
         setError(null);
       } catch (err) {
         const message = err instanceof Error ? err.message : 'Failed to load data';
@@ -50,6 +56,27 @@ export default function ChildView() {
 
     loadData();
   }, [user]);
+
+  // Refresh Bitcoin balance every 30 seconds to update USD value
+  useEffect(() => {
+    if (!child) return;
+
+    const updateBitcoinBalance = async () => {
+      try {
+        const [balanceData, priceData] = await Promise.all([
+          api.getBitcoinBalance(child.id),
+          api.getBitcoinPrice(),
+        ]);
+        setBitcoinBalance(balanceData);
+        setBitcoinPrice(priceData);
+      } catch (err) {
+        // Silently fail
+      }
+    };
+
+    const interval = setInterval(updateBitcoinBalance, 30000);
+    return () => clearInterval(interval);
+  }, [child?.id]);
 
   if (isLoading) {
     return (
@@ -97,6 +124,31 @@ export default function ChildView() {
             <div className="text-2xl font-bold text-blue-700">{balance.balance}</div>
           </div>
         </div>
+
+        {bitcoinBalance && bitcoinBalance.totalSatoshis > 0 && (
+          <div className="p-6 bg-gradient-to-r from-orange-50 to-yellow-50 border border-orange-200 rounded-lg">
+            <div className="text-center">
+              <div className="text-sm text-gray-600 font-medium mb-2">Bitcoin Balance</div>
+              <div className="text-4xl font-bold text-orange-600 mb-2">
+                ${bitcoinBalance.currentUsdValue.toLocaleString('en-US', { 
+                  minimumFractionDigits: 2, 
+                  maximumFractionDigits: 2 
+                })}
+              </div>
+              <div className="text-sm text-gray-500">
+                {bitcoinBalance.totalBtc.toFixed(8)} BTC ({bitcoinBalance.totalSatoshis.toLocaleString('en-US')} satoshis)
+              </div>
+              {bitcoinPrice && (
+                <div className="text-xs text-gray-400 mt-1">
+                  @ ${bitcoinPrice.price_usd.toLocaleString('en-US', { 
+                    minimumFractionDigits: 2, 
+                    maximumFractionDigits: 2 
+                  })}/BTC
+                </div>
+              )}
+            </div>
+          </div>
+        )}
       </div>
 
       <div className="bg-white rounded-lg shadow-md p-6 mb-6">

@@ -9,7 +9,7 @@ import type { ConvertBonusRequest, ConvertBonusResponse } from '../types.js';
 const router = Router();
 
 // Constants for conversion
-const SATOSHIS_PER_BONUS_POINT = 10_000_000;
+const SATOSHIS_PER_BONUS_POINT = 5_000;
 const SATOSHIS_PER_BTC = 100_000_000;
 
 /**
@@ -149,6 +149,56 @@ router.get('/conversions/:childId', authenticate, async (req: AuthRequest, res, 
     
     const conversions = await getConversionsByChildId(childId);
     res.json(conversions);
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * GET /api/bitcoin/balance/:childId
+ * Get child's Bitcoin balance with current USD value
+ * Parents can see any child, children can only see their own
+ */
+router.get('/balance/:childId', authenticate, async (req: AuthRequest, res, next) => {
+  try {
+    const childId = parseInt(req.params.childId, 10);
+    
+    if (isNaN(childId)) {
+      return res.status(400).json({ error: 'Invalid child ID' });
+    }
+    
+    // If child user, verify they're accessing their own data
+    if (req.user?.role === 'child') {
+      const child = await getChildByUserId(req.user.userId);
+      if (!child || child.id !== childId) {
+        return res.status(403).json({ error: 'Access denied' });
+      }
+    }
+    
+    // Get total satoshis for the child
+    const { getTotalSatoshisByChildId } = await import('../db/queries/bitcoin.js');
+    const totalSatoshis = await getTotalSatoshisByChildId(childId);
+    const totalBtc = totalSatoshis / SATOSHIS_PER_BTC;
+    
+    // Get current Bitcoin price
+    const priceData = await getOrFetchPrice();
+    
+    if (!priceData) {
+      return res.status(503).json({ 
+        error: 'Bitcoin price unavailable' 
+      });
+    }
+    
+    // Calculate current USD value
+    const currentUsdValue = totalBtc * priceData.price_usd;
+    
+    res.json({
+      childId,
+      totalSatoshis,
+      totalBtc,
+      currentUsdValue,
+      priceUsd: priceData.price_usd,
+    });
   } catch (error) {
     next(error);
   }
