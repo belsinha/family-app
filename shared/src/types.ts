@@ -93,6 +93,7 @@ export interface BitcoinPrice {
 export interface BitcoinConversion {
   id: number;
   child_id: number;
+  point_id: number | null;
   bonus_points_converted: number;
   satoshis: number;
   btc_amount: number;

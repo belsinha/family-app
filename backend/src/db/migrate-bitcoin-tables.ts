@@ -53,8 +53,27 @@ export async function migrateBitcoinTables(): Promise<boolean> {
     }
   }
 
-  // If both tables exist, no migration needed
-  if (priceCacheExists && conversionsExists) {
+  // Check if point_id column exists in bitcoin_conversions (for existing tables)
+  let pointIdColumnExists = false;
+  if (conversionsExists) {
+    try {
+      // Try to query with point_id to see if column exists
+      const { error: columnCheckError } = await supabase
+        .from('bitcoin_conversions')
+        .select('point_id')
+        .limit(1);
+      
+      if (!columnCheckError) {
+        pointIdColumnExists = true;
+      }
+    } catch {
+      // Column doesn't exist
+      pointIdColumnExists = false;
+    }
+  }
+
+  // If both tables exist and point_id column exists, no migration needed
+  if (priceCacheExists && conversionsExists && pointIdColumnExists) {
     return false;
   }
 
@@ -92,6 +111,7 @@ export async function migrateBitcoinTables(): Promise<boolean> {
       CREATE TABLE IF NOT EXISTS bitcoin_conversions (
         id BIGSERIAL PRIMARY KEY,
         child_id BIGINT NOT NULL,
+        point_id BIGINT,
         bonus_points_converted INTEGER NOT NULL,
         satoshis BIGINT NOT NULL,
         btc_amount NUMERIC NOT NULL,
@@ -101,6 +121,7 @@ export async function migrateBitcoinTables(): Promise<boolean> {
         parent_id BIGINT,
         created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
         FOREIGN KEY (child_id) REFERENCES children(id) ON DELETE CASCADE,
+        FOREIGN KEY (point_id) REFERENCES points(id) ON DELETE CASCADE,
         FOREIGN KEY (parent_id) REFERENCES users(id) ON DELETE SET NULL
       );
     `);
@@ -112,6 +133,18 @@ export async function migrateBitcoinTables(): Promise<boolean> {
     `);
     sqlStatements.push(`
       CREATE INDEX IF NOT EXISTS idx_bitcoin_conversions_created_at ON bitcoin_conversions(created_at);
+    `);
+    migrated = true;
+  }
+
+  // Add point_id column if table exists but column doesn't
+  if (conversionsExists && !pointIdColumnExists) {
+    console.log('Adding point_id column to bitcoin_conversions table...');
+    sqlStatements.push(`
+      ALTER TABLE bitcoin_conversions 
+      ADD COLUMN IF NOT EXISTS point_id BIGINT,
+      ADD CONSTRAINT IF NOT EXISTS fk_bitcoin_conversions_point_id 
+      FOREIGN KEY (point_id) REFERENCES points(id) ON DELETE CASCADE;
     `);
     migrated = true;
   }

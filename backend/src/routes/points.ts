@@ -3,7 +3,7 @@ import { addPoints, getPointsByChildId, getChildBalance, deletePoint, getMostRec
 import { authenticate, requireRole, type AuthRequest } from '../middleware/auth.js';
 import { getChildByUserId } from '../db/queries/children.js';
 import { getOrFetchPrice } from '../services/bitcoin.js';
-import { createConversion } from '../db/queries/bitcoin.js';
+import { createConversion, deleteConversionByPointId } from '../db/queries/bitcoin.js';
 
 const router = Router();
 
@@ -26,21 +26,25 @@ router.post('/', authenticate, requireRole('parent'), async (req: AuthRequest, r
     // Use description if provided, otherwise fall back to reason for backward compatibility
     const pointRecord = await addPoints(childId, points, type, description || reason, parentId);
     
-    // Automatically convert bonus points to Bitcoin
-    if (type === 'bonus' && points > 0) {
+    // Automatically convert points to Bitcoin (bonus adds, demerit subtracts)
+    if (points > 0) {
       try {
         const priceData = await getOrFetchPrice();
         
         if (priceData) {
           // Calculate conversion
-          const satoshis = points * SATOSHIS_PER_BONUS_POINT;
+          // For bonus: positive satoshis, for demerit: negative satoshis
+          const satoshis = type === 'bonus' 
+            ? points * SATOSHIS_PER_BONUS_POINT 
+            : -(points * SATOSHIS_PER_BONUS_POINT);
           const btcAmount = satoshis / SATOSHIS_PER_BTC;
           const usdValue = btcAmount * priceData.price_usd;
           
-          // Create conversion record automatically
+          // Create conversion record automatically (linked to the point)
           await createConversion({
             childId,
-            bonusPointsConverted: points,
+            pointId: pointRecord.id,
+            bonusPointsConverted: type === 'bonus' ? points : -points,
             satoshis,
             btcAmount,
             usdValue,
@@ -52,7 +56,7 @@ router.post('/', authenticate, requireRole('parent'), async (req: AuthRequest, r
         // If price unavailable, silently continue - point is still added
       } catch (error) {
         // Log error but don't fail the point addition
-        console.warn('Failed to auto-convert bonus points to Bitcoin:', error);
+        console.warn('Failed to auto-convert points to Bitcoin:', error);
       }
     }
     
@@ -154,6 +158,16 @@ router.delete('/:pointId', authenticate, requireRole('parent'), async (req: Auth
       return res.status(400).json({ error: 'Invalid point ID' });
     }
     
+    // Delete the corresponding Bitcoin conversion first (if it exists)
+    // This will automatically remove the Bitcoin balance change
+    try {
+      await deleteConversionByPointId(pointId);
+    } catch (error) {
+      // Log but don't fail - conversion might not exist (e.g., if price was unavailable when point was added)
+      console.warn('Failed to delete Bitcoin conversion for point:', error);
+    }
+    
+    // Now delete the point
     const deleted = await deletePoint(pointId);
     
     if (!deleted) {

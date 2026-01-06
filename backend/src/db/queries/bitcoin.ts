@@ -48,6 +48,7 @@ export async function savePrice(priceUsd: number, fetchedAt: Date): Promise<Bitc
 
 export async function createConversion(conversionData: {
   childId: number;
+  pointId?: number;
   bonusPointsConverted: number;
   satoshis: number;
   btcAmount: number;
@@ -63,6 +64,7 @@ export async function createConversion(conversionData: {
     .from('bitcoin_conversions')
     .insert({
       child_id: conversionData.childId,
+      point_id: conversionData.pointId || null,
       bonus_points_converted: conversionData.bonusPointsConverted,
       satoshis: conversionData.satoshis,
       btc_amount: conversionData.btcAmount,
@@ -160,5 +162,20 @@ export async function getTotalSatoshisByChildId(childId: number): Promise<number
   }
   
   return data.reduce((sum: number, conversion: any) => sum + (conversion.satoshis || 0), 0);
+}
+
+export async function deleteConversionByPointId(pointId: number): Promise<boolean> {
+  const supabase = getSupabaseClient();
+  
+  const { error } = await supabase
+    .from('bitcoin_conversions')
+    .delete()
+    .eq('point_id', pointId);
+  
+  if (error) {
+    throw new Error(`Failed to delete conversion: ${error.message}`);
+  }
+  
+  return true;
 }
 

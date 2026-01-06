@@ -52,6 +52,7 @@ CREATE TABLE IF NOT EXISTS bitcoin_price_cache (
 CREATE TABLE IF NOT EXISTS bitcoin_conversions (
   id BIGSERIAL PRIMARY KEY,
   child_id BIGINT NOT NULL,
+  point_id BIGINT,
   bonus_points_converted INTEGER NOT NULL,
   satoshis BIGINT NOT NULL,
   btc_amount NUMERIC NOT NULL,
@@ -61,6 +62,7 @@ CREATE TABLE IF NOT EXISTS bitcoin_conversions (
   parent_id BIGINT,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   FOREIGN KEY (child_id) REFERENCES children(id) ON DELETE CASCADE,
+  FOREIGN KEY (point_id) REFERENCES points(id) ON DELETE CASCADE,
   FOREIGN KEY (parent_id) REFERENCES users(id) ON DELETE SET NULL
 );
 
