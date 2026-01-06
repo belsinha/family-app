@@ -51,12 +51,19 @@ router.post('/', authenticate, requireRole('parent'), async (req: AuthRequest, r
           const usdValue = btcAmount * priceData.price_usd;
           
           console.log(`Converting ${type} point: ${points} points = ${satoshis} satoshis (${btcAmount} BTC = $${usdValue.toFixed(2)})`);
-          console.log(`Creating conversion with pointId: ${pointRecord.id} (type: ${typeof pointRecord.id})`);
+          
+          // Ensure pointId is a valid number before creating conversion
+          const pointIdForConversion = Number(pointRecord.id);
+          if (!pointIdForConversion || isNaN(pointIdForConversion) || pointIdForConversion <= 0) {
+            throw new Error(`Invalid point ID for conversion: ${pointRecord.id} (converted to ${pointIdForConversion})`);
+          }
+          
+          console.log(`Creating conversion with pointId: ${pointIdForConversion} (original: ${pointRecord.id}, type: ${typeof pointRecord.id})`);
           
           // Create conversion record automatically (linked to the point)
           await createConversion({
             childId,
-            pointId: pointRecord.id,
+            pointId: pointIdForConversion, // Use the validated number
             bonusPointsConverted: type === 'bonus' ? points : -points,
             satoshis,
             btcAmount,
@@ -66,14 +73,16 @@ router.post('/', authenticate, requireRole('parent'), async (req: AuthRequest, r
             parentId: parentId,
           });
           
-          console.log(`Successfully created ${type} conversion for child ${childId}, point ${pointRecord.id}`);
+          console.log(`✓ Successfully created ${type} conversion for child ${childId}, point ${pointIdForConversion}`);
         }
       } catch (error) {
         // Log error with details but don't fail the point addition
-        console.error(`Failed to auto-convert ${type} points to Bitcoin for child ${childId}, point ${pointRecord.id}:`, error);
+        console.error(`❌ FAILED to auto-convert ${type} points to Bitcoin for child ${childId}, point ${pointRecord?.id}:`, error);
         if (error instanceof Error) {
-          console.error('Error details:', error.message, error.stack);
+          console.error('Error message:', error.message);
+          console.error('Error stack:', error.stack);
         }
+        // Don't throw - allow point to be created even if conversion fails
       }
     }
     
