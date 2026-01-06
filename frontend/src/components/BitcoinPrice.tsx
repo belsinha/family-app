@@ -44,12 +44,18 @@ export default function BitcoinPrice() {
     try {
       setIsRefreshing(true);
       setError(null);
+      console.log('Refreshing Bitcoin price...');
       const data = await api.refreshBitcoinPrice();
+      console.log('Bitcoin price refreshed:', data);
+      // Update the price data with the refreshed value
       setPriceData(data);
       setIsStale(false);
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to refresh Bitcoin price';
+      console.error('Error refreshing Bitcoin price:', err);
       setError(message);
+      // Try to reload the cached price if refresh fails
+      await loadPrice();
     } finally {
       setIsRefreshing(false);
     }

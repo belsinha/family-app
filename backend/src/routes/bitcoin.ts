@@ -69,13 +69,19 @@ router.get('/price', authenticate, async (req: AuthRequest, res, next) => {
  */
 router.get('/price/refresh', authenticate, requireRole('parent'), async (req: AuthRequest, res, next) => {
   try {
+    console.log('Manual Bitcoin price refresh requested by user:', req.user?.userId);
     const priceData = await refreshPriceCache();
+    console.log('Bitcoin price refresh successful:', {
+      price_usd: priceData.price_usd,
+      fetched_at: priceData.fetched_at.toISOString(),
+    });
     
     res.json({
       price_usd: priceData.price_usd,
       fetched_at: priceData.fetched_at.toISOString(),
     });
   } catch (error) {
+    console.error('Error refreshing Bitcoin price:', error);
     next(error);
   }
 });
