@@ -149,36 +149,61 @@ export async function getConversionsByChildId(childId: number): Promise<BitcoinC
 export async function getTotalSatoshisByChildId(childId: number): Promise<number> {
   const supabase = getSupabaseClient();
   
-  // Get all conversions for this child
-  const { data: conversions, error } = await supabase
-    .from('bitcoin_conversions')
-    .select('satoshis, point_id')
-    .eq('child_id', childId);
+  // First, try to get conversions with point_id (new schema)
+  let conversions: any[];
+  let hasPointIdColumn = true;
   
-  if (error) {
-    throw new Error(`Failed to fetch total satoshis: ${error.message}`);
+  try {
+    const { data, error } = await supabase
+      .from('bitcoin_conversions')
+      .select('satoshis, point_id')
+      .eq('child_id', childId);
+    
+    if (error) {
+      // Check if error is due to missing column
+      if (error.message.includes('point_id') && error.message.includes('does not exist')) {
+        hasPointIdColumn = false;
+      } else {
+        throw new Error(`Failed to fetch total satoshis: ${error.message}`);
+      }
+    } else {
+      conversions = data || [];
+    }
+  } catch (error: any) {
+    // If point_id column doesn't exist, fall back to old query
+    if (error.message && error.message.includes('point_id') && error.message.includes('does not exist')) {
+      hasPointIdColumn = false;
+    } else {
+      throw error;
+    }
   }
   
+  // If point_id column doesn't exist, use simple query (backward compatibility)
+  if (!hasPointIdColumn) {
+    const { data, error } = await supabase
+      .from('bitcoin_conversions')
+      .select('satoshis')
+      .eq('child_id', childId);
+    
+    if (error) {
+      throw new Error(`Failed to fetch total satoshis: ${error.message}`);
+    }
+    
+    if (!data || data.length === 0) {
+      return 0;
+    }
+    
+    // Simple sum for legacy schema
+    return data.reduce((sum: number, conversion: any) => sum + (conversion.satoshis || 0), 0);
+  }
+  
+  // New schema with point_id - filter out conversions for deleted points
   if (!conversions || conversions.length === 0) {
     return 0;
   }
   
-  // Filter out conversions where the point was deleted (point_id exists but point doesn't)
-  // Also include conversions without point_id (legacy data) - these should be cleaned up
-  const validConversions = conversions.filter((conv: any) => {
-    // If point_id is null, it's legacy data - we'll include it for now
-    // In the future, we might want to clean these up
-    if (conv.point_id === null) {
-      return true;
-    }
-    // If point_id exists, we need to check if the point still exists
-    // For now, we'll include all conversions with point_id
-    // The CASCADE delete should have removed them, but we'll verify
-    return true;
-  });
-  
   // Get all point IDs that exist
-  const pointIds = validConversions
+  const pointIds = conversions
     .map((conv: any) => conv.point_id)
     .filter((id: any) => id !== null);
   
@@ -193,7 +218,7 @@ export async function getTotalSatoshisByChildId(childId: number): Promise<number
     
     // Only count satoshis from conversions where the point still exists
     // Or from legacy conversions (point_id is null)
-    return validConversions.reduce((sum: number, conversion: any) => {
+    return conversions.reduce((sum: number, conversion: any) => {
       if (conversion.point_id === null || existingPointIds.has(conversion.point_id)) {
         return sum + (conversion.satoshis || 0);
       }
@@ -202,7 +227,7 @@ export async function getTotalSatoshisByChildId(childId: number): Promise<number
   }
   
   // If all conversions are legacy (no point_id), sum them all
-  return validConversions.reduce((sum: number, conversion: any) => sum + (conversion.satoshis || 0), 0);
+  return conversions.reduce((sum: number, conversion: any) => sum + (conversion.satoshis || 0), 0);
 }
 
 export async function deleteConversionByPointId(pointId: number): Promise<boolean> {
