@@ -2,7 +2,6 @@ import { useState, useEffect } from 'react';
 import { api } from '../utils/api';
 import type { Child, ChildBalance } from '../../../shared/src/types';
 import PointLog from './PointLog';
-import BitcoinPrice from './BitcoinPrice';
 import BitcoinConversion from './BitcoinConversion';
 import BitcoinConversionHistory from './BitcoinConversionHistory';
 
