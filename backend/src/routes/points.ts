@@ -31,7 +31,9 @@ router.post('/', authenticate, requireRole('parent'), async (req: AuthRequest, r
       try {
         const priceData = await getOrFetchPrice();
         
-        if (priceData) {
+        if (!priceData) {
+          console.warn(`Bitcoin price unavailable when adding ${type} point for child ${childId}. Point added but not converted.`);
+        } else {
           // Calculate conversion
           // For bonus: positive satoshis, for demerit: negative satoshis
           const satoshis = type === 'bonus' 
@@ -39,6 +41,8 @@ router.post('/', authenticate, requireRole('parent'), async (req: AuthRequest, r
             : -(points * SATOSHIS_PER_BONUS_POINT);
           const btcAmount = satoshis / SATOSHIS_PER_BTC;
           const usdValue = btcAmount * priceData.price_usd;
+          
+          console.log(`Converting ${type} point: ${points} points = ${satoshis} satoshis (${btcAmount} BTC = $${usdValue.toFixed(2)})`);
           
           // Create conversion record automatically (linked to the point)
           await createConversion({
@@ -52,11 +56,15 @@ router.post('/', authenticate, requireRole('parent'), async (req: AuthRequest, r
             priceTimestamp: priceData.fetched_at,
             parentId: parentId,
           });
+          
+          console.log(`Successfully created ${type} conversion for child ${childId}, point ${pointRecord.id}`);
         }
-        // If price unavailable, silently continue - point is still added
       } catch (error) {
-        // Log error but don't fail the point addition
-        console.warn('Failed to auto-convert points to Bitcoin:', error);
+        // Log error with details but don't fail the point addition
+        console.error(`Failed to auto-convert ${type} points to Bitcoin for child ${childId}:`, error);
+        if (error instanceof Error) {
+          console.error('Error details:', error.message, error.stack);
+        }
       }
     }
     

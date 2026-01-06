@@ -3,7 +3,6 @@ import { api } from '../utils/api';
 import type { Child, ChildBalance, ChildBitcoinBalance } from '../../../shared/src/types';
 import PointLog from './PointLog';
 import BitcoinConversionHistory from './BitcoinConversionHistory';
-import BitcoinConversion from './BitcoinConversion';
 
 interface ChildCardProps {
   child: Child;
@@ -22,7 +21,6 @@ export default function ChildCard({ child, initialBalance, onBalanceUpdate }: Ch
   const [isAnonymous, setIsAnonymous] = useState(false);
   const [showPointLog, setShowPointLog] = useState(false);
   const [showBitcoinHistory, setShowBitcoinHistory] = useState(false);
-  const [showBitcoinConversion, setShowBitcoinConversion] = useState(false);
   const [bitcoinBalance, setBitcoinBalance] = useState<ChildBitcoinBalance | null>(null);
   const [bitcoinPrice, setBitcoinPrice] = useState<{ price_usd: number; fetched_at: string } | null>(null);
 
@@ -109,14 +107,15 @@ export default function ChildCard({ child, initialBalance, onBalanceUpdate }: Ch
       setBalance(newBalance);
       onBalanceUpdate(child.id, newBalance);
       
-      // Update Bitcoin balance if bonus point was added
-      if (type === 'bonus') {
-        try {
-          const bitcoinData = await api.getBitcoinBalance(child.id);
-          setBitcoinBalance(bitcoinData);
-        } catch (err) {
-          // Silently fail
-        }
+      // Update Bitcoin balance after adding any point (bonus or demerit)
+      try {
+        // Small delay to ensure backend has processed the conversion
+        await new Promise(resolve => setTimeout(resolve, 500));
+        const bitcoinData = await api.getBitcoinBalance(child.id);
+        setBitcoinBalance(bitcoinData);
+      } catch (err) {
+        // Silently fail
+        console.warn('Failed to refresh Bitcoin balance:', err);
       }
       
       setHasRecentPoint(true);
@@ -372,46 +371,19 @@ export default function ChildCard({ child, initialBalance, onBalanceUpdate }: Ch
         </div>
       )}
 
-      <div className="mt-4 pt-4 border-t border-gray-200 space-y-4">
-        <div className="space-y-2">
-          <button
-            onClick={() => setShowPointLog(true)}
-            className="w-full bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium py-2 px-4 rounded-lg transition-colors"
-          >
-            View Point Log
-          </button>
-          <button
-            onClick={() => setShowBitcoinHistory(true)}
-            className="w-full bg-blue-100 hover:bg-blue-200 text-blue-700 font-medium py-2 px-4 rounded-lg transition-colors"
-          >
-            View Bitcoin History
-          </button>
-        </div>
-        
-        {showBitcoinConversion && (
-          <div className="mt-4">
-            <BitcoinConversion
-              childId={child.id}
-              childName={child.name}
-              balance={balance}
-              onConversionComplete={async () => {
-                const newBalance = await api.getChildBalance(child.id);
-                setBalance(newBalance);
-                onBalanceUpdate(child.id, newBalance);
-                setShowBitcoinConversion(false);
-              }}
-            />
-          </div>
-        )}
-        
-        {!showBitcoinConversion && balance.bonus > 0 && (
-          <button
-            onClick={() => setShowBitcoinConversion(true)}
-            className="w-full bg-orange-100 hover:bg-orange-200 text-orange-700 font-medium py-2 px-4 rounded-lg transition-colors"
-          >
-            Convert Bonus to Bitcoin
-          </button>
-        )}
+      <div className="mt-4 pt-4 border-t border-gray-200 space-y-2">
+        <button
+          onClick={() => setShowPointLog(true)}
+          className="w-full bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium py-2 px-4 rounded-lg transition-colors"
+        >
+          View Point Log
+        </button>
+        <button
+          onClick={() => setShowBitcoinHistory(true)}
+          className="w-full bg-blue-100 hover:bg-blue-200 text-blue-700 font-medium py-2 px-4 rounded-lg transition-colors"
+        >
+          View Bitcoin History
+        </button>
       </div>
 
       {showPointLog && (
