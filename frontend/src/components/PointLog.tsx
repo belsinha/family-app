@@ -25,13 +25,18 @@ export default function PointLog({ childId, childName, onClose }: PointLogProps)
         // Load all points (not just last 7 days) to match with all conversions
         const [pointsData, conversionsData] = await Promise.all([
           api.getPointsByChildId(childId),
-          api.getBitcoinConversions(childId).catch(() => [] as BitcoinConversion[]), // Silently fail if no conversions
+          api.getBitcoinConversions(childId).catch((err) => {
+            console.warn('Failed to load Bitcoin conversions:', err);
+            return [] as BitcoinConversion[];
+          }),
         ]);
         setPoints(pointsData);
         setConversions(conversionsData);
+        console.log('Loaded points:', pointsData.length, 'conversions:', conversionsData.length);
       } catch (err) {
         const message = err instanceof Error ? err.message : 'Failed to load points';
         setError(message);
+        console.error('Error loading point log data:', err);
       } finally {
         setIsLoading(false);
       }
@@ -45,8 +50,12 @@ export default function PointLog({ childId, childName, onClose }: PointLogProps)
   conversions.forEach((conv) => {
     if (conv.point_id) {
       conversionMap.set(conv.point_id, conv);
+    } else {
+      console.warn('Conversion without point_id:', conv.id);
     }
   });
+  
+  console.log('Conversion map size:', conversionMap.size, 'Total conversions:', conversions.length);
 
   const sortedPoints = [...points].sort((a, b) => {
     if (sortBy === 'recent') {
@@ -115,7 +124,14 @@ export default function PointLog({ childId, childName, onClose }: PointLogProps)
               </button>
             </div>
           </div>
-          <p className="text-sm text-gray-500 mt-2">All points with Bitcoin conversion history</p>
+          <p className="text-sm text-gray-500 mt-2">
+            All points with Bitcoin conversion history
+            {conversions.length > 0 && (
+              <span className="ml-2 text-blue-600">
+                ({conversions.length} conversion{conversions.length !== 1 ? 's' : ''} loaded)
+              </span>
+            )}
+          </p>
         </div>
 
         <div className="flex-1 overflow-y-auto p-6">
@@ -171,7 +187,7 @@ export default function PointLog({ childId, childName, onClose }: PointLogProps)
                         )}
                         
                         {/* Bitcoin conversion info integrated into the point entry */}
-                        {conversion && (
+                        {conversion ? (
                           <div className={`mt-2 pt-2 border-t ${
                             point.type === 'bonus' ? 'border-green-300' : 'border-red-300'
                           }`}>
@@ -214,6 +230,11 @@ export default function PointLog({ childId, childName, onClose }: PointLogProps)
                                 </span>
                               </div>
                             </div>
+                          </div>
+                        ) : (
+                          // Show a message if point should have conversion but doesn't
+                          <div className="mt-2 text-xs text-gray-400 italic">
+                            No Bitcoin conversion recorded
                           </div>
                         )}
                         
