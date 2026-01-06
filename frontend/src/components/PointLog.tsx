@@ -22,8 +22,9 @@ export default function PointLog({ childId, childName, onClose }: PointLogProps)
       setIsLoading(true);
       setError(null);
       try {
+        // Load all points (not just last 7 days) to match with all conversions
         const [pointsData, conversionsData] = await Promise.all([
-          api.getPointsByChildIdLast7Days(childId),
+          api.getPointsByChildId(childId),
           api.getBitcoinConversions(childId).catch(() => [] as BitcoinConversion[]), // Silently fail if no conversions
         ]);
         setPoints(pointsData);
@@ -41,11 +42,17 @@ export default function PointLog({ childId, childName, onClose }: PointLogProps)
 
   // Create a map of point_id to conversion for quick lookup
   const conversionMap = new Map<number, BitcoinConversion>();
+  const pointIdSet = new Set(points.map(p => p.id));
   conversions.forEach((conv) => {
     if (conv.point_id) {
       conversionMap.set(conv.point_id, conv);
     }
   });
+
+  // Find conversions without matching points (shouldn't happen with CASCADE, but handle legacy data)
+  const orphanedConversions = conversions.filter(conv => 
+    conv.point_id !== null && !pointIdSet.has(conv.point_id)
+  );
 
   const sortedPoints = [...points].sort((a, b) => {
     if (sortBy === 'recent') {
@@ -114,7 +121,7 @@ export default function PointLog({ childId, childName, onClose }: PointLogProps)
               </button>
             </div>
           </div>
-          <p className="text-sm text-gray-500 mt-2">Showing last 7 days</p>
+          <p className="text-sm text-gray-500 mt-2">All points with Bitcoin conversion history</p>
         </div>
 
         <div className="flex-1 overflow-y-auto p-6">
@@ -130,7 +137,12 @@ export default function PointLog({ childId, childName, onClose }: PointLogProps)
             </div>
           ) : sortedPoints.length === 0 ? (
             <div className="text-center py-12">
-              <p className="text-gray-600">No points recorded in the last 7 days.</p>
+              <p className="text-gray-600">No points recorded.</p>
+              {conversions.length > 0 && (
+                <p className="text-sm text-gray-500 mt-2">
+                  {conversions.length} Bitcoin conversion{conversions.length !== 1 ? 's' : ''} found, but no matching points.
+                </p>
+              )}
             </div>
           ) : (
             <div className="space-y-3">
@@ -223,6 +235,64 @@ export default function PointLog({ childId, childName, onClose }: PointLogProps)
                   </div>
                 );
               })}
+            </div>
+          )}
+
+          {/* Show orphaned conversions (conversions without matching points) */}
+          {orphanedConversions.length > 0 && (
+            <div className="mt-6 pt-6 border-t border-gray-300">
+              <h3 className="text-lg font-semibold text-gray-700 mb-3">Historical Bitcoin Conversions</h3>
+              <div className="space-y-3">
+                {orphanedConversions.map((conversion) => (
+                  <div
+                    key={conversion.id}
+                    className="p-4 rounded-lg border bg-blue-50 border-blue-200"
+                  >
+                    <div className="flex items-start justify-between">
+                      <div className="flex-1">
+                        <div className="text-xs font-semibold text-blue-900 mb-2">
+                          Bitcoin Conversion (Point Removed)
+                        </div>
+                        <div className="grid grid-cols-2 gap-2 text-xs">
+                          <div>
+                            <span className="text-blue-700">Satoshis:</span>
+                            <span className="font-medium text-blue-900 ml-1">
+                              {conversion.satoshis > 0 ? '+' : ''}{conversion.satoshis.toLocaleString('en-US')}
+                            </span>
+                          </div>
+                          <div>
+                            <span className="text-blue-700">BTC:</span>
+                            <span className="font-medium text-blue-900 ml-1">
+                              {Number(conversion.btc_amount) > 0 ? '+' : ''}{Number(conversion.btc_amount).toFixed(8)}
+                            </span>
+                          </div>
+                          <div>
+                            <span className="text-blue-700">USD Value:</span>
+                            <span className="font-medium text-blue-900 ml-1">
+                              ${Number(conversion.usd_value).toLocaleString('en-US', { 
+                                minimumFractionDigits: 2, 
+                                maximumFractionDigits: 2 
+                              })}
+                            </span>
+                          </div>
+                          <div>
+                            <span className="text-blue-700">Price Used:</span>
+                            <span className="font-medium text-blue-900 ml-1">
+                              ${Number(conversion.price_usd).toLocaleString('en-US', { 
+                                minimumFractionDigits: 2, 
+                                maximumFractionDigits: 2 
+                              })}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="text-sm text-gray-500 ml-4">
+                        {new Date(conversion.created_at).toLocaleString()}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
           )}
         </div>
