@@ -18,27 +18,39 @@ interface CoinGeckoResponse {
  */
 export async function fetchBitcoinPrice(): Promise<BitcoinPriceData> {
   try {
-    const response = await fetch(COINGECKO_API_URL);
+    console.log(`Fetching Bitcoin price from CoinGecko: ${COINGECKO_API_URL}`);
+    const response = await fetch(COINGECKO_API_URL, {
+      headers: {
+        'Accept': 'application/json',
+      },
+    });
     
     if (!response.ok) {
+      const errorText = await response.text().catch(() => 'No error details');
+      console.error(`CoinGecko API error: ${response.status} ${response.statusText}`, errorText);
       throw new Error(`CoinGecko API error: ${response.status} ${response.statusText}`);
     }
     
     const data = await response.json() as CoinGeckoResponse;
     
     if (!data.bitcoin || typeof data.bitcoin.usd !== 'number') {
+      console.error('Invalid CoinGecko response format:', JSON.stringify(data));
       throw new Error('Invalid response format from CoinGecko API');
     }
     
     const priceUsd = data.bitcoin.usd;
     const fetchedAt = new Date();
     
+    console.log(`Successfully fetched Bitcoin price: $${priceUsd} at ${fetchedAt.toISOString()}`);
+    
     return {
       price_usd: priceUsd,
       fetched_at: fetchedAt,
     };
   } catch (error) {
-    throw new Error(`Failed to fetch Bitcoin price: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    console.error(`Failed to fetch Bitcoin price: ${errorMessage}`, error);
+    throw new Error(`Failed to fetch Bitcoin price: ${errorMessage}`);
   }
 }
 

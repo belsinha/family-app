@@ -66,12 +66,19 @@ initDatabase()
       try {
         const priceData = await getOrFetchPrice();
         if (priceData) {
-          console.log(`Bitcoin price updated: $${priceData.price_usd.toFixed(2)}`);
+          console.log(`Bitcoin price updated: $${priceData.price_usd.toFixed(2)} at ${priceData.fetched_at.toISOString()}`);
+        } else {
+          console.warn('Background Bitcoin price fetch returned null - no price available');
         }
       } catch (error) {
-        console.warn('Background Bitcoin price fetch failed:', error);
+        console.error('Background Bitcoin price fetch failed:', error);
+        if (error instanceof Error) {
+          console.error('Error details:', error.message, error.stack);
+        }
       }
     }, fetchIntervalMs);
+    
+    console.log(`Bitcoin price background fetcher started (interval: ${fetchIntervalMs / 1000 / 60} minutes)`);
     
     const server = app.listen(config.port, '0.0.0.0', () => {
       console.log(`Server running on port ${config.port}`);
