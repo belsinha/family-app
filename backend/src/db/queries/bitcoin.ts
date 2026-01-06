@@ -59,11 +59,13 @@ export async function createConversion(conversionData: {
 }): Promise<BitcoinConversion> {
   const supabase = getSupabaseClient();
   
-  // Validate that pointId is provided and valid
+  // STRICT VALIDATION: pointId is REQUIRED for all new conversions
+  // This prevents creating orphaned conversions
   if (conversionData.pointId === undefined || conversionData.pointId === null) {
-    const errorMsg = `ERROR: pointId is required but was ${conversionData.pointId}. Conversion data: ${JSON.stringify(conversionData)}`;
+    const errorMsg = `❌ BLOCKED: Cannot create Bitcoin conversion without pointId. This is required to link conversions to points. Conversion data: ${JSON.stringify({...conversionData, pointId: 'MISSING'})}`;
     console.error(errorMsg);
-    throw new Error(`Cannot create Bitcoin conversion without pointId. ${errorMsg}`);
+    console.error('Stack trace:', new Error().stack);
+    throw new Error(`Cannot create Bitcoin conversion without pointId. All conversions must be linked to a point.`);
   }
   
   // Ensure pointId is a valid number
@@ -84,12 +86,10 @@ export async function createConversion(conversionData: {
     satoshis: conversionData.satoshis
   });
   
-  // Insert the conversion
-  const { data: insertedConversion, error: insertError } = await supabase
-    .from('bitcoin_conversions')
-    .insert({
+  // Prepare insert data with explicit point_id
+  const insertData = {
       child_id: conversionData.childId,
-      point_id: pointId,
+      point_id: pointId, // This MUST be a valid number, not null
       bonus_points_converted: conversionData.bonusPointsConverted,
       satoshis: conversionData.satoshis,
       btc_amount: conversionData.btcAmount,
@@ -97,7 +97,14 @@ export async function createConversion(conversionData: {
       price_usd: conversionData.priceUsd,
       price_timestamp: conversionData.priceTimestamp.toISOString(),
       parent_id: conversionData.parentId || null,
-    })
+    };
+  
+  console.log(`Inserting conversion with data:`, JSON.stringify(insertData, null, 2));
+  
+  // Insert the conversion
+  const { data: insertedConversion, error: insertError } = await supabase
+    .from('bitcoin_conversions')
+    .insert(insertData)
     .select()
     .single();
   
