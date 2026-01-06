@@ -3,6 +3,7 @@ import { api } from '../utils/api';
 import type { Child, ChildBalance, ChildBitcoinBalance } from '../../../shared/src/types';
 import PointLog from './PointLog';
 import BitcoinConversionHistory from './BitcoinConversionHistory';
+import BitcoinConversion from './BitcoinConversion';
 
 interface ChildCardProps {
   child: Child;
@@ -21,6 +22,7 @@ export default function ChildCard({ child, initialBalance, onBalanceUpdate }: Ch
   const [isAnonymous, setIsAnonymous] = useState(false);
   const [showPointLog, setShowPointLog] = useState(false);
   const [showBitcoinHistory, setShowBitcoinHistory] = useState(false);
+  const [showBitcoinConversion, setShowBitcoinConversion] = useState(false);
   const [bitcoinBalance, setBitcoinBalance] = useState<ChildBitcoinBalance | null>(null);
   const [bitcoinPrice, setBitcoinPrice] = useState<{ price_usd: number; fetched_at: string } | null>(null);
 

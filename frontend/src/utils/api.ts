@@ -88,6 +88,11 @@ export const api = {
     request<ChildBitcoinBalance>(`/bitcoin/balance/${childId}`),
   getBitcoinConversions: (childId: number): Promise<BitcoinConversion[]> =>
     request<BitcoinConversion[]>(`/bitcoin/conversions/${childId}`),
+  convertBonusToBitcoin: (data: ConvertBonusRequest): Promise<ConvertBonusResponse> =>
+    request<ConvertBonusResponse>('/bitcoin/convert', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
 };
 
 
