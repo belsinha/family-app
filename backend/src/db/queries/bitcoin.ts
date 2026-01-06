@@ -14,6 +14,10 @@ export async function getLatestPrice(): Promise<BitcoinPrice | null> {
     if (error.code === 'PGRST116') {
       return null; // Not found
     }
+    // Check if table doesn't exist
+    if (error.message.includes('relation') && error.message.includes('does not exist')) {
+      throw new Error('Bitcoin tables not found. Please run the schema SQL in Supabase: backend/src/db/schema-postgres-supabase.sql');
+    }
     throw new Error(`Failed to fetch latest price: ${error.message}`);
   }
   
@@ -32,6 +36,10 @@ export async function savePrice(priceUsd: number, fetchedAt: Date): Promise<Bitc
     .single();
   
   if (error || !data) {
+    // Check if table doesn't exist
+    if (error?.message.includes('relation') && error.message.includes('does not exist')) {
+      throw new Error('Bitcoin tables not found. Please run the schema SQL in Supabase: backend/src/db/schema-postgres-supabase.sql');
+    }
     throw new Error(`Failed to save price: ${error?.message || 'Unknown error'}`);
   }
   
@@ -67,6 +75,10 @@ export async function createConversion(conversionData: {
     .single();
   
   if (insertError || !insertedConversion) {
+    // Check if table doesn't exist
+    if (insertError?.message.includes('relation') && insertError.message.includes('does not exist')) {
+      throw new Error('Bitcoin tables not found. Please run the schema SQL in Supabase: backend/src/db/schema-postgres-supabase.sql');
+    }
     throw new Error(`Failed to create conversion: ${insertError?.message || 'Unknown error'}`);
   }
   
@@ -96,6 +108,10 @@ export async function getConversionsByChildId(childId: number): Promise<BitcoinC
     .order('created_at', { ascending: false });
   
   if (error) {
+    // Check if table doesn't exist
+    if (error.message.includes('relation') && error.message.includes('does not exist')) {
+      throw new Error('Bitcoin tables not found. Please run the schema SQL in Supabase: backend/src/db/schema-postgres-supabase.sql');
+    }
     throw new Error(`Failed to fetch conversions: ${error.message}`);
   }
   
