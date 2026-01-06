@@ -37,3 +37,4 @@ export async function initSupabaseConnection(): Promise<SupabaseClient> {
 }
 
 
+
