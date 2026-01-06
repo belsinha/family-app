@@ -125,11 +125,23 @@ export default function ChildView() {
           </div>
         </div>
 
-        {bitcoinBalance && bitcoinBalance.totalSatoshis > 0 && (
-          <div className="p-6 bg-gradient-to-r from-orange-50 to-yellow-50 border border-orange-200 rounded-lg">
+        {bitcoinBalance && (
+          <div className={`p-6 border rounded-lg ${
+            bitcoinBalance.totalSatoshis > 0 
+              ? 'bg-gradient-to-r from-orange-50 to-yellow-50 border-orange-200' 
+              : bitcoinBalance.totalSatoshis < 0
+              ? 'bg-gradient-to-r from-red-50 to-pink-50 border-red-200'
+              : 'bg-gray-50 border-gray-200'
+          }`}>
             <div className="text-center">
               <div className="text-sm text-gray-600 font-medium mb-2">Bitcoin Balance</div>
-              <div className="text-4xl font-bold text-orange-600 mb-2">
+              <div className={`text-4xl font-bold mb-2 ${
+                bitcoinBalance.totalSatoshis > 0 
+                  ? 'text-orange-600' 
+                  : bitcoinBalance.totalSatoshis < 0
+                  ? 'text-red-600'
+                  : 'text-gray-600'
+              }`}>
                 ${bitcoinBalance.currentUsdValue.toLocaleString('en-US', { 
                   minimumFractionDigits: 2, 
                   maximumFractionDigits: 2 
