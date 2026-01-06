@@ -37,11 +37,13 @@ router.post('/', authenticate, requireRole('parent'), async (req: AuthRequest, r
     // Automatically convert points to Bitcoin (bonus adds, demerit subtracts)
     if (points > 0) {
       try {
+        console.log(`[BITCOIN] Attempting to get Bitcoin price for ${type} point conversion...`);
         const priceData = await getOrFetchPrice();
         
         if (!priceData) {
-          console.warn(`Bitcoin price unavailable when adding ${type} point for child ${childId}. Point added but not converted.`);
+          console.warn(`❌ Bitcoin price unavailable when adding ${type} point for child ${childId}. Point added but not converted.`);
         } else {
+          console.log(`[BITCOIN] Price obtained: $${priceData.price_usd} (fetched at: ${priceData.fetched_at.toISOString()})`);
           // Calculate conversion
           // For bonus: positive satoshis, for demerit: negative satoshis
           const satoshis = type === 'bonus' 
@@ -50,18 +52,22 @@ router.post('/', authenticate, requireRole('parent'), async (req: AuthRequest, r
           const btcAmount = satoshis / SATOSHIS_PER_BTC;
           const usdValue = btcAmount * priceData.price_usd;
           
-          console.log(`Converting ${type} point: ${points} points = ${satoshis} satoshis (${btcAmount} BTC = $${usdValue.toFixed(2)})`);
+          console.log(`[BITCOIN] Converting ${type} point: ${points} points = ${satoshis} satoshis (${btcAmount} BTC = $${usdValue.toFixed(2)})`);
           
-          // Ensure pointId is a valid number before creating conversion
+          // CRITICAL: Ensure pointId is a valid number before creating conversion
+          if (!pointRecord || !pointRecord.id) {
+            throw new Error(`Cannot create conversion: pointRecord is invalid. Point record: ${JSON.stringify(pointRecord)}`);
+          }
+          
           const pointIdForConversion = Number(pointRecord.id);
           if (!pointIdForConversion || isNaN(pointIdForConversion) || pointIdForConversion <= 0) {
             throw new Error(`Invalid point ID for conversion: ${pointRecord.id} (converted to ${pointIdForConversion})`);
           }
           
-          console.log(`Creating conversion with pointId: ${pointIdForConversion} (original: ${pointRecord.id}, type: ${typeof pointRecord.id})`);
+          console.log(`[BITCOIN] Creating conversion with pointId: ${pointIdForConversion} (original: ${pointRecord.id}, type: ${typeof pointRecord.id})`);
           
           // Create conversion record automatically (linked to the point)
-          await createConversion({
+          const conversionResult = await createConversion({
             childId,
             pointId: pointIdForConversion, // Use the validated number
             bonusPointsConverted: type === 'bonus' ? points : -points,
@@ -73,7 +79,12 @@ router.post('/', authenticate, requireRole('parent'), async (req: AuthRequest, r
             parentId: parentId,
           });
           
-          console.log(`✓ Successfully created ${type} conversion for child ${childId}, point ${pointIdForConversion}`);
+          console.log(`✓ [BITCOIN] Successfully created ${type} conversion:`, {
+            conversion_id: conversionResult.id,
+            point_id: conversionResult.point_id,
+            child_id: conversionResult.child_id,
+            satoshis: conversionResult.satoshis
+          });
         }
       } catch (error) {
         // Log error with details but don't fail the point addition

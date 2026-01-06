@@ -76,28 +76,35 @@ export async function getOrFetchPrice(): Promise<BitcoinPriceData | null> {
   // First, check if we have a cached price (even if stale, it's better than nothing)
   const cached = await getCachedPrice();
   
+  // If we have cached price, we'll use it as fallback even if fresh fetch succeeds
+  let cachedPrice: BitcoinPriceData | null = null;
+  if (cached) {
+    cachedPrice = {
+      price_usd: Number(cached.price_usd),
+      fetched_at: new Date(cached.fetched_at),
+    };
+    const ageMinutes = (Date.now() - cachedPrice.fetched_at.getTime()) / (1000 * 60);
+    console.log(`[PRICE] Found cached Bitcoin price: $${cachedPrice.price_usd} (${ageMinutes.toFixed(1)} minutes old)`);
+  }
+  
   try {
     // Try to fetch fresh price
     const priceData = await fetchBitcoinPrice();
     await updatePriceCache(priceData);
-    console.log(`✓ Successfully fetched fresh Bitcoin price: $${priceData.price_usd}`);
+    console.log(`✓ [PRICE] Successfully fetched fresh Bitcoin price: $${priceData.price_usd}`);
     return priceData;
   } catch (error) {
     // If fetch fails (e.g., rate limit), use cached price if available
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     
-    if (cached) {
-      const cachedPrice = {
-        price_usd: Number(cached.price_usd),
-        fetched_at: new Date(cached.fetched_at),
-      };
+    if (cachedPrice) {
       const ageMinutes = (Date.now() - cachedPrice.fetched_at.getTime()) / (1000 * 60);
-      console.warn(`⚠️ Failed to fetch Bitcoin price (${errorMessage}), using cached price from ${ageMinutes.toFixed(1)} minutes ago: $${cachedPrice.price_usd}`);
+      console.warn(`⚠️ [PRICE] Failed to fetch Bitcoin price (${errorMessage}), using cached price from ${ageMinutes.toFixed(1)} minutes ago: $${cachedPrice.price_usd}`);
       return cachedPrice;
     }
     
     // No cache available
-    console.error(`❌ No Bitcoin price available: API failed (${errorMessage}) and no cached price exists`);
+    console.error(`❌ [PRICE] No Bitcoin price available: API failed (${errorMessage}) and no cached price exists`);
     return null;
   }
 }
