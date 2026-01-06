@@ -203,19 +203,24 @@ export default function PointLog({ childId, childName, onClose }: PointLogProps)
             </div>
           ) : (
             <div className="space-y-3">
+              {/* Debug: Show unmapped conversions if any */}
+              {unmappedConversions.length > 0 && (
+                <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+                  <div className="text-sm font-semibold text-yellow-800 mb-2">
+                    ⚠️ {unmappedConversions.length} conversion(s) without matching points:
+                  </div>
+                  {unmappedConversions.slice(0, 3).map((conv) => (
+                    <div key={conv.id} className="text-xs text-yellow-700">
+                      Conversion ID {conv.id}, point_id: {conv.point_id || 'null'}, created: {new Date(conv.created_at).toLocaleString()}
+                    </div>
+                  ))}
+                </div>
+              )}
+              
               {sortedPoints.map((point) => {
                 // Ensure point.id is a number for matching
                 const pointId = Number(point.id);
                 const conversion = conversionMap.get(pointId);
-                
-                // Debug matching for first few points
-                if (sortedPoints.indexOf(point) < 3) {
-                  console.log(`Matching point ${pointId} (type: ${typeof point.id}):`, {
-                    found: !!conversion,
-                    conversion_id: conversion?.id,
-                    conversion_point_id: conversion?.point_id
-                  });
-                }
                 
                 return (
                   <div
@@ -336,6 +341,25 @@ export default function PointLog({ childId, childName, onClose }: PointLogProps)
                   </div>
                 );
               })}
+              
+              {/* Debug: Show all conversions if none matched */}
+              {conversions.length > 0 && conversionMap.size === 0 && (
+                <div className="mt-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                  <div className="text-sm font-semibold text-blue-800 mb-2">
+                    Debug: {conversions.length} conversion(s) loaded but none matched points:
+                  </div>
+                  <div className="space-y-2">
+                    {conversions.slice(0, 5).map((conv) => (
+                      <div key={conv.id} className="text-xs text-blue-700 bg-white p-2 rounded">
+                        <div>Conversion ID: {conv.id}</div>
+                        <div>Point ID: {conv.point_id !== null ? conv.point_id : 'NULL'} (type: {typeof conv.point_id})</div>
+                        <div>Satoshis: {conv.satoshis}</div>
+                        <div>Created: {new Date(conv.created_at).toLocaleString()}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </div>
