@@ -7,6 +7,12 @@ export interface BitcoinPriceData {
   fetched_at: Date;
 }
 
+interface CoinGeckoResponse {
+  bitcoin?: {
+    usd?: number;
+  };
+}
+
 /**
  * Fetch Bitcoin price from CoinGecko API
  */
@@ -18,7 +24,7 @@ export async function fetchBitcoinPrice(): Promise<BitcoinPriceData> {
       throw new Error(`CoinGecko API error: ${response.status} ${response.statusText}`);
     }
     
-    const data = await response.json();
+    const data = await response.json() as CoinGeckoResponse;
     
     if (!data.bitcoin || typeof data.bitcoin.usd !== 'number') {
       throw new Error('Invalid response format from CoinGecko API');
