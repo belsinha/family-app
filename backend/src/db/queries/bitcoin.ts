@@ -59,6 +59,9 @@ export async function createConversion(conversionData: {
 }): Promise<BitcoinConversion> {
   const supabase = getSupabaseClient();
   
+  // Log the point_id being saved
+  console.log(`Creating Bitcoin conversion with point_id: ${conversionData.pointId} (type: ${typeof conversionData.pointId})`);
+  
   // Insert the conversion
   const { data: insertedConversion, error: insertError } = await supabase
     .from('bitcoin_conversions')
@@ -83,6 +86,9 @@ export async function createConversion(conversionData: {
     }
     throw new Error(`Failed to create conversion: ${insertError?.message || 'Unknown error'}`);
   }
+  
+  // Verify point_id was saved correctly
+  console.log(`Conversion created with ID ${insertedConversion.id}, point_id: ${insertedConversion.point_id} (type: ${typeof insertedConversion.point_id})`);
   
   // Fetch parent name if parent_id exists
   let parentName = null;
@@ -140,13 +146,26 @@ export async function getConversionsByChildId(childId: number): Promise<BitcoinC
   }
   
   // Map conversions with parent names and ensure point_id is a number
-  return conversions.map((conversion: any) => ({
-    ...conversion,
-    point_id: conversion.point_id !== null && conversion.point_id !== undefined 
+  const mappedConversions = conversions.map((conversion: any) => {
+    const pointId = conversion.point_id !== null && conversion.point_id !== undefined 
       ? Number(conversion.point_id) 
-      : null,
-    parent_name: conversion.parent_id ? (parentNames[conversion.parent_id] || null) : null,
-  })) as BitcoinConversion[];
+      : null;
+    
+    // Log first few conversions for debugging
+    if (conversions.indexOf(conversion) < 3) {
+      console.log(`Conversion ${conversion.id}: point_id from DB = ${conversion.point_id} (type: ${typeof conversion.point_id}), converted to: ${pointId}`);
+    }
+    
+    return {
+      ...conversion,
+      point_id: pointId,
+      parent_name: conversion.parent_id ? (parentNames[conversion.parent_id] || null) : null,
+    };
+  }) as BitcoinConversion[];
+  
+  console.log(`Retrieved ${mappedConversions.length} conversions for child ${childId}, ${mappedConversions.filter(c => c.point_id !== null).length} with point_id`);
+  
+  return mappedConversions;
 }
 
 export async function getTotalSatoshisByChildId(childId: number): Promise<number> {

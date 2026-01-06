@@ -32,6 +32,33 @@ export default function PointLog({ childId, childName, onClose }: PointLogProps)
         ]);
         setPoints(pointsData);
         setConversions(conversionsData);
+        
+        // Debug logging
+        console.log('=== Point Log Data Loaded ===');
+        console.log('Points loaded:', pointsData.length);
+        console.log('Conversions loaded:', conversionsData.length);
+        if (pointsData.length > 0) {
+          console.log('Sample point:', {
+            id: pointsData[0].id,
+            id_type: typeof pointsData[0].id,
+            type: pointsData[0].type,
+            points: pointsData[0].points,
+          });
+        }
+        if (conversionsData.length > 0) {
+          console.log('Sample conversion:', {
+            id: conversionsData[0].id,
+            point_id: conversionsData[0].point_id,
+            point_id_type: typeof conversionsData[0].point_id,
+            satoshis: conversionsData[0].satoshis,
+          });
+          console.log('All conversion point_ids:', conversionsData.map(c => ({
+            conv_id: c.id,
+            point_id: c.point_id,
+            point_id_type: typeof c.point_id
+          })));
+        }
+        console.log('All point IDs:', pointsData.map(p => ({ id: p.id, id_type: typeof p.id })));
       } catch (err) {
         const message = err instanceof Error ? err.message : 'Failed to load points';
         setError(message);
@@ -46,30 +73,47 @@ export default function PointLog({ childId, childName, onClose }: PointLogProps)
 
   // Create a map of point_id to conversion for quick lookup
   const conversionMap = new Map<number, BitcoinConversion>();
+  const unmappedConversions: BitcoinConversion[] = [];
+  
   conversions.forEach((conv) => {
     // Ensure point_id is a number (database might return it as string or number)
     const pointId = conv.point_id !== null && conv.point_id !== undefined 
       ? Number(conv.point_id) 
       : null;
     
-    if (pointId && !isNaN(pointId)) {
+    if (pointId && !isNaN(pointId) && pointId > 0) {
       conversionMap.set(pointId, conv);
-    } else if (conv.point_id !== null) {
-      // Only warn if point_id exists but isn't a valid number
-      console.warn('Conversion without valid point_id:', conv.id, 'point_id value:', conv.point_id, 'type:', typeof conv.point_id);
+    } else {
+      // Track unmapped conversions for debugging
+      unmappedConversions.push(conv);
+      if (conv.point_id !== null && conv.point_id !== undefined) {
+        console.warn('Conversion without valid point_id:', {
+          conv_id: conv.id,
+          point_id: conv.point_id,
+          point_id_type: typeof conv.point_id,
+          point_id_number: Number(conv.point_id),
+          isNaN: isNaN(Number(conv.point_id))
+        });
+      }
     }
   });
   
   // Debug logging
   if (conversions.length > 0) {
-    console.log('Bitcoin conversions loaded:', conversions.length);
+    console.log('=== Conversion Mapping ===');
+    console.log('Total conversions:', conversions.length);
     console.log('Conversions with point_id:', conversions.filter(c => c.point_id !== null).length);
-    console.log('Conversion map size:', conversionMap.size);
-    if (conversionMap.size < conversions.length) {
-      console.warn('Some conversions were not mapped. Conversion point_ids:', 
-        conversions.map(c => ({ id: c.id, point_id: c.point_id, point_id_type: typeof c.point_id })));
-      console.warn('Point IDs available:', points.map(p => ({ id: p.id, id_type: typeof p.id })));
+    console.log('Successfully mapped:', conversionMap.size);
+    console.log('Unmapped conversions:', unmappedConversions.length);
+    if (unmappedConversions.length > 0) {
+      console.warn('Unmapped conversions:', unmappedConversions.map(c => ({
+        id: c.id,
+        point_id: c.point_id,
+        created_at: c.created_at
+      })));
     }
+    console.log('Conversion map keys (point_ids):', Array.from(conversionMap.keys()));
+    console.log('Available point IDs:', points.map(p => p.id));
   }
 
   const sortedPoints = [...points].sort((a, b) => {
@@ -164,6 +208,15 @@ export default function PointLog({ childId, childName, onClose }: PointLogProps)
                 const pointId = Number(point.id);
                 const conversion = conversionMap.get(pointId);
                 
+                // Debug matching for first few points
+                if (sortedPoints.indexOf(point) < 3) {
+                  console.log(`Matching point ${pointId} (type: ${typeof point.id}):`, {
+                    found: !!conversion,
+                    conversion_id: conversion?.id,
+                    conversion_point_id: conversion?.point_id
+                  });
+                }
+                
                 return (
                   <div
                     key={point.id}
@@ -202,8 +255,16 @@ export default function PointLog({ childId, childName, onClose }: PointLogProps)
                           <div className={`mt-2 pt-2 border-t ${
                             point.type === 'bonus' ? 'border-green-300' : 'border-red-300'
                           }`}>
-                            <div className="text-xs font-semibold text-gray-600 mb-1.5">Bitcoin Conversion</div>
-                            <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs">
+                            <div className="text-xs font-semibold text-gray-600 mb-2">Bitcoin Conversion</div>
+                            <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
+                              <div className="flex justify-between">
+                                <span className="text-gray-600">Bonus Points:</span>
+                                <span className={`font-medium ${
+                                  conversion.bonus_points_converted >= 0 ? 'text-green-700' : 'text-red-700'
+                                }`}>
+                                  {conversion.bonus_points_converted > 0 ? '+' : ''}{conversion.bonus_points_converted}
+                                </span>
+                              </div>
                               <div className="flex justify-between">
                                 <span className="text-gray-600">Satoshis:</span>
                                 <span className={`font-medium ${
@@ -213,11 +274,11 @@ export default function PointLog({ childId, childName, onClose }: PointLogProps)
                                 </span>
                               </div>
                               <div className="flex justify-between">
-                                <span className="text-gray-600">BTC:</span>
+                                <span className="text-gray-600">BTC Amount:</span>
                                 <span className={`font-medium ${
                                   Number(conversion.btc_amount) >= 0 ? 'text-green-700' : 'text-red-700'
                                 }`}>
-                                  {Number(conversion.btc_amount) > 0 ? '+' : ''}{Number(conversion.btc_amount).toFixed(8)}
+                                  {Number(conversion.btc_amount) > 0 ? '+' : ''}{Number(conversion.btc_amount).toFixed(8)} BTC
                                 </span>
                               </div>
                               <div className="flex justify-between">
@@ -231,13 +292,21 @@ export default function PointLog({ childId, childName, onClose }: PointLogProps)
                                   })}
                                 </span>
                               </div>
+                            </div>
+                            <div className="mt-2 pt-2 border-t border-gray-200 text-xs text-gray-500">
                               <div className="flex justify-between">
-                                <span className="text-gray-600">Price Used:</span>
+                                <span>Price Used:</span>
                                 <span className="font-medium text-gray-700">
                                   ${Number(conversion.price_usd).toLocaleString('en-US', { 
                                     minimumFractionDigits: 2, 
                                     maximumFractionDigits: 2 
                                   })}
+                                </span>
+                              </div>
+                              <div className="flex justify-between mt-1">
+                                <span>Price Timestamp:</span>
+                                <span className="font-medium text-gray-700">
+                                  {new Date(conversion.price_timestamp).toLocaleString()}
                                 </span>
                               </div>
                             </div>
