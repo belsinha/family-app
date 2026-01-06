@@ -150,7 +150,7 @@ export async function getTotalSatoshisByChildId(childId: number): Promise<number
   const supabase = getSupabaseClient();
   
   // First, try to get conversions with point_id (new schema)
-  let conversions: any[];
+  let conversions: any[] = [];
   let hasPointIdColumn = true;
   
   try {
@@ -171,7 +171,7 @@ export async function getTotalSatoshisByChildId(childId: number): Promise<number
     }
   } catch (error: any) {
     // If point_id column doesn't exist, fall back to old query
-    if (error.message && error.message.includes('point_id') && error.message.includes('does not exist')) {
+    if (error?.message && error.message.includes('point_id') && error.message.includes('does not exist')) {
       hasPointIdColumn = false;
     } else {
       throw error;
@@ -198,7 +198,7 @@ export async function getTotalSatoshisByChildId(childId: number): Promise<number
   }
   
   // New schema with point_id - filter out conversions for deleted points
-  if (!conversions || conversions.length === 0) {
+  if (conversions.length === 0) {
     return 0;
   }
   
