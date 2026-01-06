@@ -59,10 +59,20 @@ export async function createConversion(conversionData: {
 }): Promise<BitcoinConversion> {
   const supabase = getSupabaseClient();
   
-  // Ensure pointId is explicitly set (not undefined)
-  const pointId = conversionData.pointId !== undefined && conversionData.pointId !== null 
-    ? Number(conversionData.pointId) 
-    : null;
+  // Validate that pointId is provided and valid
+  if (conversionData.pointId === undefined || conversionData.pointId === null) {
+    const errorMsg = `ERROR: pointId is required but was ${conversionData.pointId}. Conversion data: ${JSON.stringify(conversionData)}`;
+    console.error(errorMsg);
+    throw new Error(`Cannot create Bitcoin conversion without pointId. ${errorMsg}`);
+  }
+  
+  // Ensure pointId is a valid number
+  const pointId = Number(conversionData.pointId);
+  if (isNaN(pointId) || pointId <= 0) {
+    const errorMsg = `ERROR: Invalid pointId: ${conversionData.pointId} (converted to ${pointId}). Conversion data: ${JSON.stringify(conversionData)}`;
+    console.error(errorMsg);
+    throw new Error(`Invalid pointId for Bitcoin conversion: ${pointId}`);
+  }
   
   // Log the point_id being saved
   console.log(`Creating Bitcoin conversion:`, {
@@ -96,11 +106,55 @@ export async function createConversion(conversionData: {
     if (insertError?.message.includes('relation') && insertError.message.includes('does not exist')) {
       throw new Error('Bitcoin tables not found. Please run the schema SQL in Supabase: backend/src/db/schema-postgres-supabase.sql');
     }
+    // Check if point_id column doesn't exist
+    if (insertError?.message.includes('point_id') || insertError?.message.includes('column')) {
+      console.error(`Database error related to point_id column:`, insertError);
+      throw new Error(`Database column issue: ${insertError?.message}. Please ensure the point_id column exists in bitcoin_conversions table.`);
+    }
+    console.error(`Failed to create conversion. Error:`, insertError);
+    console.error(`Attempted insert data:`, {
+      child_id: conversionData.childId,
+      point_id: pointId,
+      satoshis: conversionData.satoshis
+    });
     throw new Error(`Failed to create conversion: ${insertError?.message || 'Unknown error'}`);
   }
   
+  // Verify point_id was saved correctly by querying the database directly
+  const { data: verifyConversion, error: verifyError } = await supabase
+    .from('bitcoin_conversions')
+    .select('id, point_id')
+    .eq('id', insertedConversion.id)
+    .single();
+  
+  if (verifyError) {
+    console.error(`Error verifying conversion:`, verifyError);
+  } else {
+    console.log(`Verified conversion in DB:`, {
+      id: verifyConversion.id,
+      point_id: verifyConversion.point_id,
+      point_id_type: typeof verifyConversion.point_id
+    });
+  }
+  
   // Verify point_id was saved correctly
-  console.log(`Conversion created with ID ${insertedConversion.id}, point_id: ${insertedConversion.point_id} (type: ${typeof insertedConversion.point_id})`);
+  const savedPointId = insertedConversion.point_id !== null && insertedConversion.point_id !== undefined 
+    ? Number(insertedConversion.point_id) 
+    : null;
+    
+  if (savedPointId === null || savedPointId !== pointId) {
+    console.error(`ERROR: Conversion created but point_id mismatch!`, {
+      conversion_id: insertedConversion.id,
+      expected_point_id: pointId,
+      saved_point_id: insertedConversion.point_id,
+      saved_point_id_type: typeof insertedConversion.point_id,
+      verified_point_id: verifyConversion?.point_id,
+      full_record: insertedConversion
+    });
+    throw new Error(`Conversion created but point_id was not saved correctly. Expected: ${pointId}, Got: ${insertedConversion.point_id}`);
+  }
+  
+  console.log(`✓ Conversion created successfully: ID ${insertedConversion.id}, point_id: ${insertedConversion.point_id}`);
   
   // Fetch parent name if parent_id exists
   let parentName = null;
