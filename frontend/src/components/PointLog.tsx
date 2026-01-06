@@ -32,7 +32,6 @@ export default function PointLog({ childId, childName, onClose }: PointLogProps)
         ]);
         setPoints(pointsData);
         setConversions(conversionsData);
-        console.log('Loaded points:', pointsData.length, 'conversions:', conversionsData.length);
       } catch (err) {
         const message = err instanceof Error ? err.message : 'Failed to load points';
         setError(message);
@@ -48,14 +47,30 @@ export default function PointLog({ childId, childName, onClose }: PointLogProps)
   // Create a map of point_id to conversion for quick lookup
   const conversionMap = new Map<number, BitcoinConversion>();
   conversions.forEach((conv) => {
-    if (conv.point_id) {
-      conversionMap.set(conv.point_id, conv);
-    } else {
-      console.warn('Conversion without point_id:', conv.id);
+    // Ensure point_id is a number (database might return it as string or number)
+    const pointId = conv.point_id !== null && conv.point_id !== undefined 
+      ? Number(conv.point_id) 
+      : null;
+    
+    if (pointId && !isNaN(pointId)) {
+      conversionMap.set(pointId, conv);
+    } else if (conv.point_id !== null) {
+      // Only warn if point_id exists but isn't a valid number
+      console.warn('Conversion without valid point_id:', conv.id, 'point_id value:', conv.point_id, 'type:', typeof conv.point_id);
     }
   });
   
-  console.log('Conversion map size:', conversionMap.size, 'Total conversions:', conversions.length);
+  // Debug logging
+  if (conversions.length > 0) {
+    console.log('Bitcoin conversions loaded:', conversions.length);
+    console.log('Conversions with point_id:', conversions.filter(c => c.point_id !== null).length);
+    console.log('Conversion map size:', conversionMap.size);
+    if (conversionMap.size < conversions.length) {
+      console.warn('Some conversions were not mapped. Conversion point_ids:', 
+        conversions.map(c => ({ id: c.id, point_id: c.point_id, point_id_type: typeof c.point_id })));
+      console.warn('Point IDs available:', points.map(p => ({ id: p.id, id_type: typeof p.id })));
+    }
+  }
 
   const sortedPoints = [...points].sort((a, b) => {
     if (sortBy === 'recent') {
@@ -124,14 +139,7 @@ export default function PointLog({ childId, childName, onClose }: PointLogProps)
               </button>
             </div>
           </div>
-          <p className="text-sm text-gray-500 mt-2">
-            All points with Bitcoin conversion history
-            {conversions.length > 0 && (
-              <span className="ml-2 text-blue-600">
-                ({conversions.length} conversion{conversions.length !== 1 ? 's' : ''} loaded)
-              </span>
-            )}
-          </p>
+          <p className="text-sm text-gray-500 mt-2">All points with Bitcoin conversion history</p>
         </div>
 
         <div className="flex-1 overflow-y-auto p-6">
@@ -152,7 +160,10 @@ export default function PointLog({ childId, childName, onClose }: PointLogProps)
           ) : (
             <div className="space-y-3">
               {sortedPoints.map((point) => {
-                const conversion = conversionMap.get(point.id);
+                // Ensure point.id is a number for matching
+                const pointId = Number(point.id);
+                const conversion = conversionMap.get(pointId);
+                
                 return (
                   <div
                     key={point.id}

@@ -365,7 +365,7 @@ export default function ChildCard({ child, initialBalance, onBalanceUpdate }: Ch
           onClick={() => setShowPointLog(true)}
           className="w-full bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium py-2 px-4 rounded-lg transition-colors"
         >
-          View Point Log & Bitcoin History
+          Point Log
         </button>
       </div>
 

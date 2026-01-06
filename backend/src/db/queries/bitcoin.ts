@@ -139,9 +139,12 @@ export async function getConversionsByChildId(childId: number): Promise<BitcoinC
     }
   }
   
-  // Map conversions with parent names
+  // Map conversions with parent names and ensure point_id is a number
   return conversions.map((conversion: any) => ({
     ...conversion,
+    point_id: conversion.point_id !== null && conversion.point_id !== undefined 
+      ? Number(conversion.point_id) 
+      : null,
     parent_name: conversion.parent_id ? (parentNames[conversion.parent_id] || null) : null,
   })) as BitcoinConversion[];
 }
