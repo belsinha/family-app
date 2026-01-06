@@ -14,11 +14,21 @@ const SATOSHIS_PER_BTC = 100_000_000;
 
 /**
  * GET /api/bitcoin/price
- * Get current cached Bitcoin price (parents only)
+ * Get current cached Bitcoin price (all authenticated users can view)
  */
-router.get('/price', authenticate, requireRole('parent'), async (req: AuthRequest, res, next) => {
+router.get('/price', authenticate, async (req: AuthRequest, res, next) => {
   try {
-    const price = await getCachedPrice();
+    // Try to get cached price first
+    let price = await getCachedPrice();
+    
+    // If no cached price, try to fetch one
+    if (!price) {
+      const priceData = await getOrFetchPrice();
+      if (priceData) {
+        // Get the newly cached price
+        price = await getCachedPrice();
+      }
+    }
     
     if (!price) {
       return res.status(404).json({ error: 'Bitcoin price not available' });
