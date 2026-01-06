@@ -42,7 +42,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
 
     const RETRY_INTERVAL_MS = 4000; // 4 seconds
-    const MAX_WAIT_TIME_MS = 30000; // 30 seconds
+    const MAX_WAIT_TIME_MS = 15000; // 15 seconds
     const REQUEST_TIMEOUT_MS = 10000; // 10 seconds per request
 
     const apiUrl = `${getApiBaseUrl()}/auth/login`;

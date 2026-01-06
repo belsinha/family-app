@@ -84,16 +84,17 @@ export async function getUserByIdWithPassword(id: number): Promise<(User & { pas
 
 export async function updateUserPassword(userId: number, passwordHash: string): Promise<boolean> {
   const supabase = getSupabaseClient();
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from('users')
     .update({ password_hash: passwordHash })
-    .eq('id', userId);
+    .eq('id', userId)
+    .select('id, password_hash')
+    .single();
   
   if (error) {
     throw new Error(`Failed to update password: ${error.message}`);
   }
   
-  // Verify the update
-  const updatedUser = await getUserByIdWithPassword(userId);
-  return updatedUser !== null && updatedUser.password_hash === passwordHash;
+  // Verify the update succeeded by checking the returned data
+  return data !== null && data.password_hash === passwordHash;
 }
