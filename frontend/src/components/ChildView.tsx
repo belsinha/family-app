@@ -3,7 +3,6 @@ import { useAuth } from '../contexts/AuthContext';
 import { api } from '../utils/api';
 import type { Child, ChildBalance, Point, ChildBitcoinBalance } from '../../../shared/src/types';
 import BitcoinPrice from './BitcoinPrice';
-import BitcoinConversionHistory from './BitcoinConversionHistory';
 
 export default function ChildView() {
   const { user } = useAuth();
@@ -213,8 +212,6 @@ export default function ChildView() {
       <div className="mb-6">
         <BitcoinPrice />
       </div>
-
-      <BitcoinConversionHistory childId={child.id} childName={child.name} />
     </div>
   );
 }

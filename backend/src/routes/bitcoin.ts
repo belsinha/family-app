@@ -9,7 +9,7 @@ import type { ConvertBonusRequest, ConvertBonusResponse } from '../types.js';
 const router = Router();
 
 // Constants for conversion
-const SATOSHIS_PER_BONUS_POINT = 5_000;
+const SATOSHIS_PER_BONUS_POINT = 2_500;
 const SATOSHIS_PER_BTC = 100_000_000;
 
 /**

@@ -2,7 +2,6 @@ import { useState, useEffect } from 'react';
 import { api } from '../utils/api';
 import type { Child, ChildBalance, ChildBitcoinBalance } from '../../../shared/src/types';
 import PointLog from './PointLog';
-import BitcoinConversionHistory from './BitcoinConversionHistory';
 
 interface ChildCardProps {
   child: Child;
@@ -18,11 +17,10 @@ export default function ChildCard({ child, initialBalance, onBalanceUpdate }: Ch
   const [hasRecentPoint, setHasRecentPoint] = useState(false);
   const [showDescriptionInput, setShowDescriptionInput] = useState<'bonus' | 'demerit' | null>(null);
   const [description, setDescription] = useState('');
-  const [isAnonymous, setIsAnonymous] = useState(false);
   const [showPointLog, setShowPointLog] = useState(false);
-  const [showBitcoinHistory, setShowBitcoinHistory] = useState(false);
   const [bitcoinBalance, setBitcoinBalance] = useState<ChildBitcoinBalance | null>(null);
   const [bitcoinPrice, setBitcoinPrice] = useState<{ price_usd: number; fetched_at: string } | null>(null);
+  const [showUndoConfirm, setShowUndoConfirm] = useState(false);
 
   // Update balance when initialBalance prop changes (e.g., when balances load from API)
   useEffect(() => {
@@ -86,7 +84,6 @@ export default function ChildCard({ child, initialBalance, onBalanceUpdate }: Ch
   const handleAddPoints = async (type: 'bonus' | 'demerit') => {
     if (showDescriptionInput !== type) {
       setShowDescriptionInput(type);
-      setIsAnonymous(false);
       return;
     }
 
@@ -100,7 +97,6 @@ export default function ChildCard({ child, initialBalance, onBalanceUpdate }: Ch
         points: 1,
         type,
         description: description.trim() || undefined,
-        anonymous: isAnonymous,
       });
 
       const newBalance = await api.getChildBalance(child.id);
@@ -120,10 +116,8 @@ export default function ChildCard({ child, initialBalance, onBalanceUpdate }: Ch
       
       setHasRecentPoint(true);
       setDescription('');
-      setIsAnonymous(false);
       setShowDescriptionInput(null);
-      const anonymousText = isAnonymous ? ' anonymously' : '';
-      setSuccess(`${type === 'bonus' ? 'Bonus' : 'Demerit'} point added${anonymousText} successfully!`);
+      setSuccess(`${type === 'bonus' ? 'Bonus' : 'Demerit'} point added successfully!`);
       setTimeout(() => setSuccess(null), 3000);
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to add points';
@@ -164,7 +158,12 @@ export default function ChildCard({ child, initialBalance, onBalanceUpdate }: Ch
       setTimeout(() => setError(null), 5000);
     } finally {
       setIsLoading(false);
+      setShowUndoConfirm(false);
     }
+  };
+
+  const confirmUndo = () => {
+    setShowUndoConfirm(true);
   };
 
   return (
@@ -172,7 +171,7 @@ export default function ChildCard({ child, initialBalance, onBalanceUpdate }: Ch
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-3">
           <button
-            onClick={handleUndo}
+            onClick={confirmUndo}
             disabled={isLoading || !hasRecentPoint}
             className="p-2 rounded-full bg-gray-100 hover:bg-gray-200 disabled:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             title="Undo last action"
@@ -265,20 +264,10 @@ export default function ChildCard({ child, initialBalance, onBalanceUpdate }: Ch
                 } else if (e.key === 'Escape') {
                   setShowDescriptionInput(null);
                   setDescription('');
-                  setIsAnonymous(false);
                 }
               }}
               autoFocus
             />
-            <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={isAnonymous}
-                onChange={(e) => setIsAnonymous(e.target.checked)}
-                className="w-4 h-4 text-green-600 border-gray-300 rounded focus:ring-green-500"
-              />
-              <span>Give anonymously</span>
-            </label>
             <div className="flex gap-2">
               <button
                 onClick={() => handleAddPoints('bonus')}
@@ -291,7 +280,6 @@ export default function ChildCard({ child, initialBalance, onBalanceUpdate }: Ch
                 onClick={() => {
                   setShowDescriptionInput(null);
                   setDescription('');
-                  setIsAnonymous(false);
                 }}
                 disabled={isLoading}
                 className="px-4 py-2 bg-gray-200 hover:bg-gray-300 text-gray-700 font-semibold rounded-lg transition-colors"
@@ -315,20 +303,10 @@ export default function ChildCard({ child, initialBalance, onBalanceUpdate }: Ch
                 } else if (e.key === 'Escape') {
                   setShowDescriptionInput(null);
                   setDescription('');
-                  setIsAnonymous(false);
                 }
               }}
               autoFocus
             />
-            <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={isAnonymous}
-                onChange={(e) => setIsAnonymous(e.target.checked)}
-                className="w-4 h-4 text-red-600 border-gray-300 rounded focus:ring-red-500"
-              />
-              <span>Give anonymously</span>
-            </label>
             <div className="flex gap-2">
               <button
                 onClick={() => handleAddPoints('demerit')}
@@ -341,7 +319,6 @@ export default function ChildCard({ child, initialBalance, onBalanceUpdate }: Ch
                 onClick={() => {
                   setShowDescriptionInput(null);
                   setDescription('');
-                  setIsAnonymous(false);
                 }}
                 disabled={isLoading}
                 className="px-4 py-2 bg-gray-200 hover:bg-gray-300 text-gray-700 font-semibold rounded-lg transition-colors"
@@ -383,18 +360,12 @@ export default function ChildCard({ child, initialBalance, onBalanceUpdate }: Ch
         </div>
       )}
 
-      <div className="mt-4 pt-4 border-t border-gray-200 space-y-2">
+      <div className="mt-4 pt-4 border-t border-gray-200">
         <button
           onClick={() => setShowPointLog(true)}
           className="w-full bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium py-2 px-4 rounded-lg transition-colors"
         >
-          View Point Log
-        </button>
-        <button
-          onClick={() => setShowBitcoinHistory(true)}
-          className="w-full bg-blue-100 hover:bg-blue-200 text-blue-700 font-medium py-2 px-4 rounded-lg transition-colors"
-        >
-          View Bitcoin History
+          View Point Log & Bitcoin History
         </button>
       </div>
 
@@ -406,12 +377,31 @@ export default function ChildCard({ child, initialBalance, onBalanceUpdate }: Ch
         />
       )}
 
-      {showBitcoinHistory && (
-        <BitcoinConversionHistory
-          childId={child.id}
-          childName={child.name}
-          onClose={() => setShowBitcoinHistory(false)}
-        />
+      {showUndoConfirm && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-6">
+            <h3 className="text-lg font-bold text-gray-900 mb-4">Confirm Undo</h3>
+            <p className="text-gray-700 mb-6">
+              Are you sure you want to undo the last action? This will remove the most recent point and its associated Bitcoin conversion.
+            </p>
+            <div className="flex gap-3 justify-end">
+              <button
+                onClick={() => setShowUndoConfirm(false)}
+                disabled={isLoading}
+                className="px-4 py-2 bg-gray-200 hover:bg-gray-300 text-gray-700 font-semibold rounded-lg transition-colors disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleUndo}
+                disabled={isLoading}
+                className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white font-semibold rounded-lg transition-colors disabled:opacity-50"
+              >
+                {isLoading ? 'Undoing...' : 'Confirm Undo'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

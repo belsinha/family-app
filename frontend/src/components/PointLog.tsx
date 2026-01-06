@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { api } from '../utils/api';
-import type { Point } from '../../../shared/src/types';
+import type { Point, BitcoinConversion } from '../../../shared/src/types';
 
 interface PointLogProps {
   childId: number;
@@ -12,17 +12,22 @@ type SortOption = 'recent' | 'kind';
 
 export default function PointLog({ childId, childName, onClose }: PointLogProps) {
   const [points, setPoints] = useState<Point[]>([]);
+  const [conversions, setConversions] = useState<BitcoinConversion[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [sortBy, setSortBy] = useState<SortOption>('recent');
 
   useEffect(() => {
-    const loadPoints = async () => {
+    const loadData = async () => {
       setIsLoading(true);
       setError(null);
       try {
-        const pointsData = await api.getPointsByChildIdLast7Days(childId);
+        const [pointsData, conversionsData] = await Promise.all([
+          api.getPointsByChildIdLast7Days(childId),
+          api.getBitcoinConversions(childId).catch(() => [] as BitcoinConversion[]), // Silently fail if no conversions
+        ]);
         setPoints(pointsData);
+        setConversions(conversionsData);
       } catch (err) {
         const message = err instanceof Error ? err.message : 'Failed to load points';
         setError(message);
@@ -31,8 +36,16 @@ export default function PointLog({ childId, childName, onClose }: PointLogProps)
       }
     };
 
-    loadPoints();
+    loadData();
   }, [childId]);
+
+  // Create a map of point_id to conversion for quick lookup
+  const conversionMap = new Map<number, BitcoinConversion>();
+  conversions.forEach((conv) => {
+    if (conv.point_id) {
+      conversionMap.set(conv.point_id, conv);
+    }
+  });
 
   const sortedPoints = [...points].sort((a, b) => {
     if (sortBy === 'recent') {
@@ -121,55 +134,95 @@ export default function PointLog({ childId, childName, onClose }: PointLogProps)
             </div>
           ) : (
             <div className="space-y-3">
-              {sortedPoints.map((point) => (
-                <div
-                  key={point.id}
-                  className={`p-4 rounded-lg border ${
-                    point.type === 'bonus'
-                      ? 'bg-green-50 border-green-200'
-                      : 'bg-red-50 border-red-200'
-                  }`}
-                >
-                  <div className="flex items-start justify-between">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2 mb-1">
-                        <span
-                          className={`font-semibold ${
-                            point.type === 'bonus' ? 'text-green-700' : 'text-red-700'
-                          }`}
-                        >
-                          {point.type === 'bonus' ? '+' : '-'}{point.points} points
-                        </span>
-                        <span
-                          className={`text-xs px-2 py-1 rounded ${
-                            point.type === 'bonus'
-                              ? 'bg-green-200 text-green-800'
-                              : 'bg-red-200 text-red-800'
-                          }`}
-                        >
-                          {point.type}
-                        </span>
+              {sortedPoints.map((point) => {
+                const conversion = conversionMap.get(point.id);
+                return (
+                  <div
+                    key={point.id}
+                    className={`p-4 rounded-lg border ${
+                      point.type === 'bonus'
+                        ? 'bg-green-50 border-green-200'
+                        : 'bg-red-50 border-red-200'
+                    }`}
+                  >
+                    <div className="flex items-start justify-between">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2 mb-1">
+                          <span
+                            className={`font-semibold ${
+                              point.type === 'bonus' ? 'text-green-700' : 'text-red-700'
+                            }`}
+                          >
+                            {point.type === 'bonus' ? '+' : '-'}{point.points} points
+                          </span>
+                          <span
+                            className={`text-xs px-2 py-1 rounded ${
+                              point.type === 'bonus'
+                                ? 'bg-green-200 text-green-800'
+                                : 'bg-red-200 text-red-800'
+                            }`}
+                          >
+                            {point.type}
+                          </span>
+                        </div>
+                        {point.reason && (
+                          <p className="text-sm text-gray-700 mt-1">{point.reason}</p>
+                        )}
+                        {conversion && (
+                          <div className="mt-2 p-2 bg-blue-50 border border-blue-200 rounded">
+                            <div className="text-xs font-semibold text-blue-900 mb-1">Bitcoin Conversion</div>
+                            <div className="grid grid-cols-2 gap-2 text-xs">
+                              <div>
+                                <span className="text-blue-700">Satoshis:</span>
+                                <span className="font-medium text-blue-900 ml-1">
+                                  {conversion.satoshis > 0 ? '+' : ''}{conversion.satoshis.toLocaleString('en-US')}
+                                </span>
+                              </div>
+                              <div>
+                                <span className="text-blue-700">BTC:</span>
+                                <span className="font-medium text-blue-900 ml-1">
+                                  {Number(conversion.btc_amount) > 0 ? '+' : ''}{Number(conversion.btc_amount).toFixed(8)}
+                                </span>
+                              </div>
+                              <div>
+                                <span className="text-blue-700">USD Value:</span>
+                                <span className="font-medium text-blue-900 ml-1">
+                                  ${Number(conversion.usd_value).toLocaleString('en-US', { 
+                                    minimumFractionDigits: 2, 
+                                    maximumFractionDigits: 2 
+                                  })}
+                                </span>
+                              </div>
+                              <div>
+                                <span className="text-blue-700">Price Used:</span>
+                                <span className="font-medium text-blue-900 ml-1">
+                                  ${Number(conversion.price_usd).toLocaleString('en-US', { 
+                                    minimumFractionDigits: 2, 
+                                    maximumFractionDigits: 2 
+                                  })}
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                        )}
+                        <div className="mt-2 flex items-center gap-2">
+                          <span className="text-xs font-semibold text-gray-500">Given by:</span>
+                          <span className={`text-sm font-semibold ${
+                            point.parent_name 
+                              ? 'text-blue-700 bg-blue-100 px-2 py-1 rounded' 
+                              : 'text-gray-600 bg-gray-200 px-2 py-1 rounded'
+                          }`}>
+                            {point.parent_name || 'Anonymous'}
+                          </span>
+                        </div>
                       </div>
-                      {point.reason && (
-                        <p className="text-sm text-gray-700 mt-1">{point.reason}</p>
-                      )}
-                      <div className="mt-2 flex items-center gap-2">
-                        <span className="text-xs font-semibold text-gray-500">Given by:</span>
-                        <span className={`text-sm font-semibold ${
-                          point.parent_name 
-                            ? 'text-blue-700 bg-blue-100 px-2 py-1 rounded' 
-                            : 'text-gray-600 bg-gray-200 px-2 py-1 rounded'
-                        }`}>
-                          {point.parent_name || 'Anonymous'}
-                        </span>
+                      <div className="text-sm text-gray-500 ml-4">
+                        {new Date(point.created_at).toLocaleString()}
                       </div>
-                    </div>
-                    <div className="text-sm text-gray-500 ml-4">
-                      {new Date(point.created_at).toLocaleString()}
                     </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>

@@ -10,7 +10,7 @@ interface BitcoinConversionProps {
   onConversionComplete?: () => void;
 }
 
-const SATOSHIS_PER_BONUS_POINT = 5_000;
+const SATOSHIS_PER_BONUS_POINT = 2_500;
 const SATOSHIS_PER_BTC = 100_000_000;
 
 export default function BitcoinConversion({ 
