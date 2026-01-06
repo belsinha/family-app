@@ -5,6 +5,7 @@ import { initDatabase } from './db/init-supabase.js';
 import { logger } from './middleware/logger.js';
 import { errorHandler } from './middleware/errorHandler.js';
 import routes from './routes/index.js';
+import { getOrFetchPrice } from './services/bitcoin.js';
 
 const app = express();
 
@@ -21,13 +22,14 @@ app.get('/', (req, res) => {
   res.json({
     message: 'Family App API',
     version: '1.0.0',
-    endpoints: {
+      endpoints: {
       health: '/health',
       api: '/api',
       auth: '/api/auth',
       users: '/api/users',
       children: '/api/children',
-      points: '/api/points'
+      points: '/api/points',
+      bitcoin: '/api/bitcoin'
     }
   });
 });
@@ -45,7 +47,32 @@ app.use(errorHandler);
 
 // Initialize database and start server
 initDatabase()
-  .then(() => {
+  .then(async () => {
+    // Fetch Bitcoin price on startup
+    try {
+      const priceData = await getOrFetchPrice();
+      if (priceData) {
+        console.log(`Bitcoin price fetched on startup: $${priceData.price_usd.toFixed(2)}`);
+      } else {
+        console.warn('Bitcoin price not available on startup');
+      }
+    } catch (error) {
+      console.warn('Failed to fetch Bitcoin price on startup:', error);
+    }
+    
+    // Set up background price fetcher (every 15 minutes)
+    const fetchIntervalMs = parseInt(process.env.BITCOIN_PRICE_FETCH_INTERVAL_MS || '900000', 10);
+    setInterval(async () => {
+      try {
+        const priceData = await getOrFetchPrice();
+        if (priceData) {
+          console.log(`Bitcoin price updated: $${priceData.price_usd.toFixed(2)}`);
+        }
+      } catch (error) {
+        console.warn('Background Bitcoin price fetch failed:', error);
+      }
+    }, fetchIntervalMs);
+    
     const server = app.listen(config.port, '0.0.0.0', () => {
       console.log(`Server running on port ${config.port}`);
       console.log(`Server accessible at http://0.0.0.0:${config.port}`);

@@ -2,6 +2,8 @@ import { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { api } from '../utils/api';
 import type { Child, ChildBalance, Point } from '../../../shared/src/types';
+import BitcoinPrice from './BitcoinPrice';
+import BitcoinConversionHistory from './BitcoinConversionHistory';
 
 export default function ChildView() {
   const { user } = useAuth();
@@ -97,7 +99,7 @@ export default function ChildView() {
         </div>
       </div>
 
-      <div className="bg-white rounded-lg shadow-md p-6">
+      <div className="bg-white rounded-lg shadow-md p-6 mb-6">
         <h3 className="text-xl font-bold text-gray-900 mb-2">Recent Points</h3>
         <p className="text-sm text-gray-500 mb-4">Last 7 days</p>
         {points.length === 0 ? (
@@ -143,6 +145,12 @@ export default function ChildView() {
           </div>
         )}
       </div>
+
+      <div className="mb-6">
+        <BitcoinPrice />
+      </div>
+
+      <BitcoinConversionHistory childId={child.id} childName={child.name} />
     </div>
   );
 }

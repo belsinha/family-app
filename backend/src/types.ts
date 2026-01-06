@@ -74,4 +74,41 @@ export interface ChangePasswordResponse {
   message: string;
 }
 
+// Bitcoin types
+export interface BitcoinPrice {
+  id: number;
+  price_usd: number;
+  fetched_at: string;
+  created_at: string;
+}
+
+export interface BitcoinConversion {
+  id: number;
+  child_id: number;
+  bonus_points_converted: number;
+  satoshis: number;
+  btc_amount: number;
+  usd_value: number;
+  price_usd: number;
+  price_timestamp: string;
+  parent_id: number | null;
+  parent_name?: string | null;
+  created_at: string;
+}
+
+export interface ConvertBonusRequest {
+  childId: number;
+  bonusPoints: number;
+}
+
+export interface ConvertBonusResponse {
+  conversion: BitcoinConversion;
+  bonusPointsConverted: number;
+  satoshis: number;
+  btcAmount: number;
+  usdValue: number;
+  priceUsd: number;
+  priceTimestamp: string;
+}
+
 

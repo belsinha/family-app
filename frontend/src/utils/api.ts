@@ -1,4 +1,4 @@
-import type { Child, Point, User, AddPointsRequest, ChildBalance, ApiError, ChangePasswordRequest, ChangePasswordResponse } from '../../../shared/src/types';
+import type { Child, Point, User, AddPointsRequest, ChildBalance, ApiError, ChangePasswordRequest, ChangePasswordResponse, BitcoinPrice, BitcoinConversion, ConvertBonusRequest, ConvertBonusResponse } from '../../../shared/src/types';
 
 // Automatically detect API URL based on current hostname for local network access
 const getApiBaseUrl = () => {
@@ -78,6 +78,19 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(data),
     }),
+
+  // Bitcoin
+  getBitcoinPrice: (): Promise<{ price_usd: number; fetched_at: string }> =>
+    request<{ price_usd: number; fetched_at: string }>('/bitcoin/price'),
+  refreshBitcoinPrice: (): Promise<{ price_usd: number; fetched_at: string }> =>
+    request<{ price_usd: number; fetched_at: string }>('/bitcoin/price/refresh'),
+  convertBonusToBitcoin: (data: ConvertBonusRequest): Promise<ConvertBonusResponse> =>
+    request<ConvertBonusResponse>('/bitcoin/convert', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+  getBitcoinConversions: (childId: number): Promise<BitcoinConversion[]> =>
+    request<BitcoinConversion[]>(`/bitcoin/conversions/${childId}`),
 };
 
 

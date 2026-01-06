@@ -2,6 +2,9 @@ import { useState, useEffect } from 'react';
 import { api } from '../utils/api';
 import type { Child, ChildBalance } from '../../../shared/src/types';
 import PointLog from './PointLog';
+import BitcoinPrice from './BitcoinPrice';
+import BitcoinConversion from './BitcoinConversion';
+import BitcoinConversionHistory from './BitcoinConversionHistory';
 
 interface ChildCardProps {
   child: Child;
@@ -19,6 +22,8 @@ export default function ChildCard({ child, initialBalance, onBalanceUpdate }: Ch
   const [description, setDescription] = useState('');
   const [isAnonymous, setIsAnonymous] = useState(false);
   const [showPointLog, setShowPointLog] = useState(false);
+  const [showBitcoinConversion, setShowBitcoinConversion] = useState(false);
+  const [showBitcoinHistory, setShowBitcoinHistory] = useState(false);
 
   // Update balance when initialBalance prop changes (e.g., when balances load from API)
   useEffect(() => {
@@ -284,13 +289,46 @@ export default function ChildCard({ child, initialBalance, onBalanceUpdate }: Ch
         </div>
       )}
 
-      <div className="mt-4 pt-4 border-t border-gray-200">
-        <button
-          onClick={() => setShowPointLog(true)}
-          className="w-full bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium py-2 px-4 rounded-lg transition-colors"
-        >
-          View Point Log
-        </button>
+      <div className="mt-4 pt-4 border-t border-gray-200 space-y-4">
+        <div className="space-y-2">
+          <button
+            onClick={() => setShowPointLog(true)}
+            className="w-full bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium py-2 px-4 rounded-lg transition-colors"
+          >
+            View Point Log
+          </button>
+          <button
+            onClick={() => setShowBitcoinHistory(true)}
+            className="w-full bg-blue-100 hover:bg-blue-200 text-blue-700 font-medium py-2 px-4 rounded-lg transition-colors"
+          >
+            View Bitcoin History
+          </button>
+        </div>
+        
+        {showBitcoinConversion && (
+          <div className="mt-4">
+            <BitcoinConversion
+              childId={child.id}
+              childName={child.name}
+              balance={balance}
+              onConversionComplete={async () => {
+                const newBalance = await api.getChildBalance(child.id);
+                setBalance(newBalance);
+                onBalanceUpdate(child.id, newBalance);
+                setShowBitcoinConversion(false);
+              }}
+            />
+          </div>
+        )}
+        
+        {!showBitcoinConversion && balance.bonus > 0 && (
+          <button
+            onClick={() => setShowBitcoinConversion(true)}
+            className="w-full bg-orange-100 hover:bg-orange-200 text-orange-700 font-medium py-2 px-4 rounded-lg transition-colors"
+          >
+            Convert Bonus to Bitcoin
+          </button>
+        )}
       </div>
 
       {showPointLog && (
@@ -298,6 +336,14 @@ export default function ChildCard({ child, initialBalance, onBalanceUpdate }: Ch
           childId={child.id}
           childName={child.name}
           onClose={() => setShowPointLog(false)}
+        />
+      )}
+
+      {showBitcoinHistory && (
+        <BitcoinConversionHistory
+          childId={child.id}
+          childName={child.name}
+          onClose={() => setShowBitcoinHistory(false)}
         />
       )}
     </div>

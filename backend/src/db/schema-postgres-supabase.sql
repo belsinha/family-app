@@ -40,6 +40,30 @@ CREATE TABLE IF NOT EXISTS points (
   FOREIGN KEY (parent_id) REFERENCES users(id) ON DELETE SET NULL
 );
 
+-- Bitcoin price cache table
+CREATE TABLE IF NOT EXISTS bitcoin_price_cache (
+  id BIGSERIAL PRIMARY KEY,
+  price_usd NUMERIC NOT NULL,
+  fetched_at TIMESTAMP WITH TIME ZONE NOT NULL,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Bitcoin conversions table
+CREATE TABLE IF NOT EXISTS bitcoin_conversions (
+  id BIGSERIAL PRIMARY KEY,
+  child_id BIGINT NOT NULL,
+  bonus_points_converted INTEGER NOT NULL,
+  satoshis BIGINT NOT NULL,
+  btc_amount NUMERIC NOT NULL,
+  usd_value NUMERIC NOT NULL,
+  price_usd NUMERIC NOT NULL,
+  price_timestamp TIMESTAMP WITH TIME ZONE NOT NULL,
+  parent_id BIGINT,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  FOREIGN KEY (child_id) REFERENCES children(id) ON DELETE CASCADE,
+  FOREIGN KEY (parent_id) REFERENCES users(id) ON DELETE SET NULL
+);
+
 -- Create indexes for better performance
 CREATE INDEX IF NOT EXISTS idx_users_house_id ON users(house_id);
 CREATE INDEX IF NOT EXISTS idx_users_role ON users(role);
@@ -48,5 +72,9 @@ CREATE INDEX IF NOT EXISTS idx_children_house_id ON children(house_id);
 CREATE INDEX IF NOT EXISTS idx_points_child_id ON points(child_id);
 CREATE INDEX IF NOT EXISTS idx_points_parent_id ON points(parent_id);
 CREATE INDEX IF NOT EXISTS idx_points_created_at ON points(created_at);
+CREATE INDEX IF NOT EXISTS idx_bitcoin_price_cache_fetched_at ON bitcoin_price_cache(fetched_at);
+CREATE INDEX IF NOT EXISTS idx_bitcoin_conversions_child_id ON bitcoin_conversions(child_id);
+CREATE INDEX IF NOT EXISTS idx_bitcoin_conversions_parent_id ON bitcoin_conversions(parent_id);
+CREATE INDEX IF NOT EXISTS idx_bitcoin_conversions_created_at ON bitcoin_conversions(created_at);
 
 
