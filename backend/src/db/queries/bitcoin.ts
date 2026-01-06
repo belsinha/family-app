@@ -48,26 +48,38 @@ export async function savePrice(priceUsd: number, fetchedAt: Date): Promise<Bitc
 
 export async function createConversion(conversionData: {
   childId: number;
-  pointId?: number;
+  pointId?: number | null;
   bonusPointsConverted: number;
   satoshis: number;
   btcAmount: number;
   usdValue: number;
   priceUsd: number;
   priceTimestamp: Date;
-  parentId?: number;
+  parentId?: number | null;
 }): Promise<BitcoinConversion> {
   const supabase = getSupabaseClient();
   
+  // Ensure pointId is explicitly set (not undefined)
+  const pointId = conversionData.pointId !== undefined && conversionData.pointId !== null 
+    ? Number(conversionData.pointId) 
+    : null;
+  
   // Log the point_id being saved
-  console.log(`Creating Bitcoin conversion with point_id: ${conversionData.pointId} (type: ${typeof conversionData.pointId})`);
+  console.log(`Creating Bitcoin conversion:`, {
+    pointId: pointId,
+    pointId_type: typeof pointId,
+    original_pointId: conversionData.pointId,
+    original_type: typeof conversionData.pointId,
+    childId: conversionData.childId,
+    satoshis: conversionData.satoshis
+  });
   
   // Insert the conversion
   const { data: insertedConversion, error: insertError } = await supabase
     .from('bitcoin_conversions')
     .insert({
       child_id: conversionData.childId,
-      point_id: conversionData.pointId || null,
+      point_id: pointId,
       bonus_points_converted: conversionData.bonusPointsConverted,
       satoshis: conversionData.satoshis,
       btc_amount: conversionData.btcAmount,

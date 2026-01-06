@@ -26,6 +26,14 @@ router.post('/', authenticate, requireRole('parent'), async (req: AuthRequest, r
     // Use description if provided, otherwise fall back to reason for backward compatibility
     const pointRecord = await addPoints(childId, points, type, description || reason, parentId);
     
+    // Verify point was created with an ID
+    if (!pointRecord || !pointRecord.id) {
+      console.error(`ERROR: Point was created but has no ID! Point record:`, pointRecord);
+      throw new Error('Point was created but has no ID');
+    }
+    
+    console.log(`Point created successfully: ID=${pointRecord.id}, type=${type}, points=${points}, childId=${childId}`);
+    
     // Automatically convert points to Bitcoin (bonus adds, demerit subtracts)
     if (points > 0) {
       try {
@@ -43,6 +51,7 @@ router.post('/', authenticate, requireRole('parent'), async (req: AuthRequest, r
           const usdValue = btcAmount * priceData.price_usd;
           
           console.log(`Converting ${type} point: ${points} points = ${satoshis} satoshis (${btcAmount} BTC = $${usdValue.toFixed(2)})`);
+          console.log(`Creating conversion with pointId: ${pointRecord.id} (type: ${typeof pointRecord.id})`);
           
           // Create conversion record automatically (linked to the point)
           await createConversion({
@@ -61,7 +70,7 @@ router.post('/', authenticate, requireRole('parent'), async (req: AuthRequest, r
         }
       } catch (error) {
         // Log error with details but don't fail the point addition
-        console.error(`Failed to auto-convert ${type} points to Bitcoin for child ${childId}:`, error);
+        console.error(`Failed to auto-convert ${type} points to Bitcoin for child ${childId}, point ${pointRecord.id}:`, error);
         if (error instanceof Error) {
           console.error('Error details:', error.message, error.stack);
         }
