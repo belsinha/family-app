@@ -1,4 +1,4 @@
-import type { Child, Point, User, AddPointsRequest, ChildBalance, ApiError, ChangePasswordRequest, ChangePasswordResponse, BitcoinConversion, ConvertBonusRequest, ConvertBonusResponse, ChildBitcoinBalance, WorkLog, AddWorkLogRequest } from '../../../shared/src/types';
+import type { Child, Point, User, AddPointsRequest, ChildBalance, ApiError, ChangePasswordRequest, ChangePasswordResponse, BitcoinConversion, ConvertBonusRequest, ConvertBonusResponse, ChildBitcoinBalance, WorkLog, AddWorkLogRequest, UpdateWorkLogRequest } from '../../../shared/src/types';
 
 // Automatically detect API URL based on current hostname for local network access
 const getApiBaseUrl = () => {
@@ -102,6 +102,11 @@ export const api = {
     }),
   getWorkLogsByChildId: (childId: number): Promise<WorkLog[]> =>
     request<WorkLog[]>(`/work-logs/child/${childId}`),
+  updateWorkLog: (workLogId: number, data: UpdateWorkLogRequest): Promise<WorkLog> =>
+    request<WorkLog>(`/work-logs/${workLogId}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    }),
 };
 
 

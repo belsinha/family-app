@@ -39,7 +39,10 @@ export default function ChildView() {
         const [balanceData, pointsData, workLogsData, bitcoinData, priceData] = await Promise.all([
           api.getChildBalance(childRecord.id),
           api.getPointsByChildIdLast7Days(childRecord.id),
-          api.getWorkLogsByChildId(childRecord.id).catch(() => []),
+          api.getWorkLogsByChildId(childRecord.id).catch((err) => {
+            console.warn('Failed to load work logs:', err);
+            return [];
+          }),
           api.getBitcoinBalance(childRecord.id).catch(() => null),
           api.getBitcoinPrice().catch(() => null),
         ]);
@@ -170,57 +173,6 @@ export default function ChildView() {
       <div className="bg-white rounded-lg shadow-md p-6 mb-6">
         <div className="flex items-center justify-between mb-4">
           <div>
-            <h3 className="text-xl font-bold text-gray-900 mb-2">Recent Points</h3>
-            <p className="text-sm text-gray-500">Last 7 days</p>
-          </div>
-        </div>
-        {points.length === 0 ? (
-          <p className="text-gray-600">No points recorded in the last 7 days.</p>
-        ) : (
-          <div className="space-y-3">
-            {points.map((point) => (
-              <div
-                key={point.id}
-                className={`p-4 rounded-lg border ${
-                  point.type === 'bonus' ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'
-                }`}
-              >
-                <div className="flex items-start justify-between">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2 mb-1">
-                      <span className={`font-semibold ${point.type === 'bonus' ? 'text-green-700' : 'text-red-700'}`}>
-                        {point.type === 'bonus' ? '+' : '-'}{point.points} points
-                      </span>
-                      <span
-                        className={`text-xs px-2 py-1 rounded ${
-                          point.type === 'bonus'
-                            ? 'bg-green-200 text-green-800'
-                            : 'bg-red-200 text-red-800'
-                        }`}
-                      >
-                        {point.type}
-                      </span>
-                    </div>
-                    {point.reason && (
-                      <p className="text-sm text-gray-700 mt-1">{point.reason}</p>
-                    )}
-                    <p className="text-xs text-gray-600 mt-1 font-medium">
-                      Given by: {point.parent_name || 'Anonymous'}
-                    </p>
-                  </div>
-                  <div className="text-sm text-gray-500 ml-4">
-                    {new Date(point.created_at).toLocaleString()}
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-
-      <div className="bg-white rounded-lg shadow-md p-6 mb-6">
-        <div className="flex items-center justify-between mb-4">
-          <div>
             <h3 className="text-xl font-bold text-gray-900 mb-2">Work Logs</h3>
             <p className="text-sm text-gray-500">Track your work hours</p>
           </div>
@@ -270,6 +222,57 @@ export default function ChildView() {
                 View All Work Logs ({workLogs.length} total)
               </button>
             )}
+          </div>
+        )}
+      </div>
+
+      <div className="bg-white rounded-lg shadow-md p-6 mb-6">
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <h3 className="text-xl font-bold text-gray-900 mb-2">Recent Points</h3>
+            <p className="text-sm text-gray-500">Last 7 days</p>
+          </div>
+        </div>
+        {points.length === 0 ? (
+          <p className="text-gray-600">No points recorded in the last 7 days.</p>
+        ) : (
+          <div className="space-y-3">
+            {points.map((point) => (
+              <div
+                key={point.id}
+                className={`p-4 rounded-lg border ${
+                  point.type === 'bonus' ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'
+                }`}
+              >
+                <div className="flex items-start justify-between">
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className={`font-semibold ${point.type === 'bonus' ? 'text-green-700' : 'text-red-700'}`}>
+                        {point.type === 'bonus' ? '+' : '-'}{point.points} points
+                      </span>
+                      <span
+                        className={`text-xs px-2 py-1 rounded ${
+                          point.type === 'bonus'
+                            ? 'bg-green-200 text-green-800'
+                            : 'bg-red-200 text-red-800'
+                        }`}
+                      >
+                        {point.type}
+                      </span>
+                    </div>
+                    {point.reason && (
+                      <p className="text-sm text-gray-700 mt-1">{point.reason}</p>
+                    )}
+                    <p className="text-xs text-gray-600 mt-1 font-medium">
+                      Given by: {point.parent_name || 'Anonymous'}
+                    </p>
+                  </div>
+                  <div className="text-sm text-gray-500 ml-4">
+                    {new Date(point.created_at).toLocaleString()}
+                  </div>
+                </div>
+              </div>
+            ))}
           </div>
         )}
       </div>

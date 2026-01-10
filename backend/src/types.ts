@@ -137,4 +137,10 @@ export interface AddWorkLogRequest {
   workDate?: string;
 }
 
+export interface UpdateWorkLogRequest {
+  hours: number;
+  description: string;
+  workDate?: string;
+}
+
 

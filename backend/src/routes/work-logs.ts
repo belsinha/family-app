@@ -1,6 +1,6 @@
 import { Router } from 'express';
-import { addWorkLog, getWorkLogsByChildId } from '../db/queries/work-logs.js';
-import { authenticate, type AuthRequest } from '../middleware/auth.js';
+import { addWorkLog, getWorkLogsByChildId, updateWorkLog, getWorkLogById } from '../db/queries/work-logs.js';
+import { authenticate, requireRole, type AuthRequest } from '../middleware/auth.js';
 import { getChildByUserId } from '../db/queries/children.js';
 
 const router = Router();
@@ -58,6 +58,43 @@ router.get('/child/:childId', authenticate, async (req: AuthRequest, res, next) 
     
     const workLogs = await getWorkLogsByChildId(childId);
     res.json(workLogs);
+  } catch (error) {
+    next(error);
+  }
+});
+
+// Update work log - only parents can edit
+router.put('/:workLogId', authenticate, requireRole('parent'), async (req: AuthRequest, res, next) => {
+  try {
+    const workLogId = parseInt(req.params.workLogId, 10);
+    const { hours, description, workDate } = req.body;
+    
+    if (isNaN(workLogId)) {
+      return res.status(400).json({ error: 'Invalid work log ID' });
+    }
+    
+    if (hours === undefined || !description) {
+      return res.status(400).json({ error: 'Missing required fields: hours, description' });
+    }
+    
+    // Validate hours is positive
+    if (typeof hours !== 'number' || hours <= 0) {
+      return res.status(400).json({ error: 'Hours must be a positive number' });
+    }
+    
+    // Validate description is not empty
+    if (typeof description !== 'string' || description.trim().length === 0) {
+      return res.status(400).json({ error: 'Description cannot be empty' });
+    }
+    
+    // Verify work log exists
+    const existingLog = await getWorkLogById(workLogId);
+    if (!existingLog) {
+      return res.status(404).json({ error: 'Work log not found' });
+    }
+    
+    const updatedLog = await updateWorkLog(workLogId, hours, description, workDate);
+    res.json(updatedLog);
   } catch (error) {
     next(error);
   }

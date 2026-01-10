@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { api } from '../utils/api';
-import type { WorkLog, AddWorkLogRequest } from '../../../shared/src/types';
+import { useAuth } from '../contexts/AuthContext';
+import type { WorkLog, AddWorkLogRequest, UpdateWorkLogRequest } from '../../../shared/src/types';
 
 interface WorkLogProps {
   childId: number;
@@ -10,17 +11,25 @@ interface WorkLogProps {
 }
 
 export default function WorkLog({ childId, childName, onClose, onCreate }: WorkLogProps) {
+  const { user } = useAuth();
+  const isParent = user?.role === 'parent';
   const [workLogs, setWorkLogs] = useState<WorkLog[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isCreating, setIsCreating] = useState(false);
+  const [editingLogId, setEditingLogId] = useState<number | null>(null);
   
-  // Form state
+  // Form state for create
   const [hours, setHours] = useState<string>('');
   const [description, setDescription] = useState<string>('');
   const [workDate, setWorkDate] = useState<string>(new Date().toISOString().split('T')[0]);
   const [formError, setFormError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  
+  // Form state for edit
+  const [editHours, setEditHours] = useState<string>('');
+  const [editDescription, setEditDescription] = useState<string>('');
+  const [editWorkDate, setEditWorkDate] = useState<string>('');
 
   useEffect(() => {
     loadWorkLogs();
@@ -83,6 +92,69 @@ export default function WorkLog({ childId, childName, onClose, onCreate }: WorkL
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to create work log';
+      setFormError(message);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleEdit = (log: WorkLog) => {
+    setEditingLogId(log.id);
+    setEditHours(String(log.hours));
+    setEditDescription(log.description);
+    setEditWorkDate(log.work_date);
+    setFormError(null);
+  };
+
+  const handleCancelEdit = () => {
+    setEditingLogId(null);
+    setEditHours('');
+    setEditDescription('');
+    setEditWorkDate('');
+    setFormError(null);
+  };
+
+  const handleUpdate = async (e: React.FormEvent, logId: number) => {
+    e.preventDefault();
+    setFormError(null);
+
+    // Validation
+    const hoursNum = parseFloat(editHours);
+    if (!editHours || isNaN(hoursNum) || hoursNum <= 0) {
+      setFormError('Hours must be a positive number');
+      return;
+    }
+
+    if (!editDescription.trim()) {
+      setFormError('Description cannot be empty');
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      const data: UpdateWorkLogRequest = {
+        hours: hoursNum,
+        description: editDescription.trim(),
+        workDate: editWorkDate || undefined,
+      };
+      
+      await api.updateWorkLog(logId, data);
+      
+      // Reset edit form
+      setEditingLogId(null);
+      setEditHours('');
+      setEditDescription('');
+      setEditWorkDate('');
+      
+      // Reload work logs
+      await loadWorkLogs();
+      
+      // Notify parent component
+      if (onCreate) {
+        onCreate();
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to update work log';
       setFormError(message);
     } finally {
       setIsSubmitting(false);
@@ -232,26 +304,109 @@ export default function WorkLog({ childId, childName, onClose, onCreate }: WorkL
                   key={log.id}
                   className="p-4 rounded-lg border bg-blue-50 border-blue-200"
                 >
-                  <div className="flex items-start justify-between">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2 mb-2">
-                        <span className="font-semibold text-lg text-blue-700">
-                          {Number(log.hours)} hour{Number(log.hours) !== 1 ? 's' : ''}
-                        </span>
-                        <span className="text-xs px-2 py-1 rounded bg-blue-200 text-blue-800">
-                          {new Date(log.work_date).toLocaleDateString('en-US', {
-                            year: 'numeric',
-                            month: 'short',
-                            day: 'numeric'
-                          })}
-                        </span>
+                  {editingLogId === log.id ? (
+                    // Edit form
+                    <form onSubmit={(e) => handleUpdate(e, log.id)} className="space-y-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Hours Worked *
+                        </label>
+                        <input
+                          type="number"
+                          step="0.25"
+                          min="0.25"
+                          value={editHours}
+                          onChange={(e) => setEditHours(e.target.value)}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                          placeholder="e.g., 2.5"
+                          required
+                        />
                       </div>
-                      <p className="text-sm text-gray-700 mb-2">{log.description}</p>
-                      <p className="text-xs text-gray-500">
-                        Logged on {new Date(log.created_at).toLocaleString()}
-                      </p>
-                    </div>
-                  </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Description *
+                        </label>
+                        <textarea
+                          value={editDescription}
+                          onChange={(e) => setEditDescription(e.target.value)}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                          placeholder="Short description of the work performed"
+                          rows={3}
+                          required
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Date
+                        </label>
+                        <input
+                          type="date"
+                          value={editWorkDate}
+                          onChange={(e) => setEditWorkDate(e.target.value)}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                          required
+                        />
+                      </div>
+
+                      {formError && (
+                        <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
+                          <p className="text-sm text-red-800">{formError}</p>
+                        </div>
+                      )}
+
+                      <div className="flex gap-3">
+                        <button
+                          type="submit"
+                          disabled={isSubmitting}
+                          className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed"
+                        >
+                          {isSubmitting ? 'Saving...' : 'Save Changes'}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleCancelEdit}
+                          disabled={isSubmitting}
+                          className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg font-medium hover:bg-gray-300 transition-colors disabled:opacity-50"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </form>
+                  ) : (
+                    // Display mode
+                    <>
+                      <div className="flex items-start justify-between">
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2 mb-2">
+                            <span className="font-semibold text-lg text-blue-700">
+                              {Number(log.hours)} hour{Number(log.hours) !== 1 ? 's' : ''}
+                            </span>
+                            <span className="text-xs px-2 py-1 rounded bg-blue-200 text-blue-800">
+                              {new Date(log.work_date).toLocaleDateString('en-US', {
+                                year: 'numeric',
+                                month: 'short',
+                                day: 'numeric'
+                              })}
+                            </span>
+                          </div>
+                          <p className="text-sm text-gray-700 mb-2">{log.description}</p>
+                          <p className="text-xs text-gray-500">
+                            Logged on {new Date(log.created_at).toLocaleString()}
+                          </p>
+                        </div>
+                        {isParent && (
+                          <button
+                            onClick={() => handleEdit(log)}
+                            className="ml-4 px-3 py-1 text-sm bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors"
+                          >
+                            Edit
+                          </button>
+                        )}
+                      </div>
+                    </>
+                  )}
                 </div>
               ))}
             </div>
