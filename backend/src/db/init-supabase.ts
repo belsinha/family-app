@@ -31,17 +31,21 @@ export async function initDatabase() {
     // Migrate Bitcoin tables if they don't exist
     try {
       await migrateBitcoinTables();
-      
-      // Clean up orphaned conversions (those with NULL point_id)
-      // This handles conversions created before we added point_id validation
-      try {
-        await cleanupOrphanedConversions();
-      } catch (error) {
-        console.warn('Orphaned conversion cleanup failed (non-critical):', error);
-      }
     } catch (error) {
       console.warn('Bitcoin table migration failed (non-critical):', error);
       // Don't throw - allow app to continue even if Bitcoin tables don't exist yet
+    }
+    
+    // Clean up orphaned conversions (those with NULL point_id)
+    // This handles conversions created before we added point_id validation
+    // Run this separately so it always runs, even if migration failed
+    try {
+      await cleanupOrphanedConversions();
+    } catch (error) {
+      console.warn('Orphaned conversion cleanup failed (non-critical):', error);
+      if (error instanceof Error) {
+        console.warn('Cleanup error details:', error.message, error.stack);
+      }
     }
     
     // Check if database is empty and seed if needed

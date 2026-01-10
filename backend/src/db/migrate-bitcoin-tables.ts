@@ -198,42 +198,81 @@ export async function cleanupOrphanedConversions(): Promise<number> {
   const supabase = getSupabaseClient();
   
   try {
+    console.log('[CLEANUP] Starting orphaned Bitcoin conversion cleanup...');
+    
     // Find all conversions with NULL point_id
     const { data: orphaned, error: findError } = await supabase
       .from('bitcoin_conversions')
-      .select('id, child_id, created_at, satoshis')
+      .select('id, child_id, created_at, satoshis, point_id')
       .is('point_id', null);
     
     if (findError) {
-      console.error('Error finding orphaned conversions:', findError);
+      console.error('[CLEANUP] Error finding orphaned conversions:', findError);
+      console.error('[CLEANUP] Error details:', JSON.stringify(findError, null, 2));
       return 0;
     }
+    
+    console.log(`[CLEANUP] Query result: ${orphaned?.length || 0} orphaned conversion(s) found`);
     
     if (!orphaned || orphaned.length === 0) {
+      console.log('[CLEANUP] No orphaned conversions to clean up');
       return 0;
     }
     
-    console.log(`Found ${orphaned.length} orphaned Bitcoin conversion(s) with NULL point_id. Cleaning up...`);
-    
-    // Delete orphaned conversions
-    const { error: deleteError } = await supabase
-      .from('bitcoin_conversions')
-      .delete()
-      .is('point_id', null);
-    
-    if (deleteError) {
-      console.error('Error deleting orphaned conversions:', deleteError);
-      return 0;
-    }
-    
-    console.log(`✓ Cleaned up ${orphaned.length} orphaned Bitcoin conversion(s)`);
+    console.log(`[CLEANUP] Found ${orphaned.length} orphaned Bitcoin conversion(s) with NULL point_id:`);
     orphaned.forEach((conv) => {
-      console.log(`  - Deleted conversion ID ${conv.id} (child ${conv.child_id}, ${conv.satoshis} satoshis, created ${conv.created_at})`);
+      console.log(`  - Conversion ID ${conv.id} (child ${conv.child_id}, ${conv.satoshis} satoshis, created ${conv.created_at}, point_id: ${conv.point_id})`);
     });
     
-    return orphaned.length;
+    // Delete by IDs for more reliable deletion
+    const idsToDelete = orphaned.map(conv => conv.id);
+    console.log(`[CLEANUP] Attempting to delete ${idsToDelete.length} conversion(s) with IDs:`, idsToDelete);
+    
+    // Delete orphaned conversions by IDs
+    const { data: deletedData, error: deleteError } = await supabase
+      .from('bitcoin_conversions')
+      .delete()
+      .in('id', idsToDelete)
+      .select();
+    
+    if (deleteError) {
+      console.error('[CLEANUP] Error deleting orphaned conversions:', deleteError);
+      console.error('[CLEANUP] Delete error details:', JSON.stringify(deleteError, null, 2));
+      
+      // Try alternative method: delete one by one
+      console.log('[CLEANUP] Attempting alternative deletion method (one by one)...');
+      let deletedCount = 0;
+      for (const id of idsToDelete) {
+        const { error: singleDeleteError } = await supabase
+          .from('bitcoin_conversions')
+          .delete()
+          .eq('id', id);
+        
+        if (singleDeleteError) {
+          console.error(`[CLEANUP] Failed to delete conversion ID ${id}:`, singleDeleteError);
+        } else {
+          deletedCount++;
+          console.log(`[CLEANUP] ✓ Deleted conversion ID ${id}`);
+        }
+      }
+      
+      if (deletedCount > 0) {
+        console.log(`[CLEANUP] ✓ Cleaned up ${deletedCount} of ${idsToDelete.length} orphaned conversion(s)`);
+        return deletedCount;
+      }
+      
+      return 0;
+    }
+    
+    const deletedCount = deletedData?.length || 0;
+    console.log(`[CLEANUP] ✓ Successfully cleaned up ${deletedCount} orphaned Bitcoin conversion(s)`);
+    
+    return deletedCount;
   } catch (error) {
-    console.error('Error during orphaned conversion cleanup:', error);
+    console.error('[CLEANUP] Error during orphaned conversion cleanup:', error);
+    if (error instanceof Error) {
+      console.error('[CLEANUP] Error stack:', error.stack);
+    }
     return 0;
   }
 }

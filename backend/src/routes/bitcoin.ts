@@ -4,6 +4,7 @@ import { getCachedPrice, getOrFetchPrice, refreshPriceCache } from '../services/
 import { createConversion, getConversionsByChildId } from '../db/queries/bitcoin.js';
 import { getChildBalance } from '../db/queries/points.js';
 import { getChildByUserId } from '../db/queries/children.js';
+import { cleanupOrphanedConversions } from '../db/migrate-bitcoin-tables.js';
 import type { ConvertBonusRequest, ConvertBonusResponse } from '../types.js';
 
 const router = Router();
@@ -228,6 +229,26 @@ router.get('/balance/:childId', authenticate, async (req: AuthRequest, res, next
       totalBtc,
       currentUsdValue,
       priceUsd: priceData.price_usd,
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * POST /api/bitcoin/cleanup-orphaned
+ * Manually trigger cleanup of orphaned conversions (NULL point_id)
+ * Only parents can run this
+ */
+router.post('/cleanup-orphaned', authenticate, requireRole('parent'), async (req: AuthRequest, res, next) => {
+  try {
+    console.log('[CLEANUP] Manual cleanup triggered by user:', req.user?.userId);
+    const deletedCount = await cleanupOrphanedConversions();
+    
+    res.json({
+      success: true,
+      deletedCount,
+      message: `Cleaned up ${deletedCount} orphaned conversion(s)`
     });
   } catch (error) {
     next(error);
