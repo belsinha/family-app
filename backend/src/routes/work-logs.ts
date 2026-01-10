@@ -181,8 +181,11 @@ router.post('/:workLogId/approve', authenticate, requireRole('parent'), async (r
       workLog.project = project;
     }
     
+    // Convert action to status: 'approve' -> 'approved', 'decline' -> 'declined'
+    const status = action === 'approve' ? 'approved' : 'declined';
+    
     // Update status
-    const updatedLog = await updateWorkLogStatus(workLogId, action);
+    const updatedLog = await updateWorkLogStatus(workLogId, status);
     
     // If approved, calculate and award bonus
     if (action === 'approve') {
