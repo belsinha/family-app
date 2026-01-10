@@ -11,8 +11,14 @@ import { authenticate, requireRole, type AuthRequest } from '../middleware/auth.
 import { getChildByUserId } from '../db/queries/children.js';
 import { getProjectById } from '../db/queries/projects.js';
 import { addPoints } from '../db/queries/points.js';
+import { getOrFetchPrice } from '../services/bitcoin.js';
+import { createConversion } from '../db/queries/bitcoin.js';
 
 const router = Router();
+
+// Constants for Bitcoin conversion (matching points.ts)
+const SATOSHIS_PER_BONUS_POINT = 2_500;
+const SATOSHIS_PER_BTC = 100_000_000;
 
 // Add work log - children can create for themselves
 router.post('/', authenticate, async (req: AuthRequest, res, next) => {
@@ -193,13 +199,72 @@ router.post('/:workLogId/approve', authenticate, requireRole('parent'), async (r
       
       if (bonusPoints > 0) {
         // Award bonus points
-        await addPoints(
+        const pointRecord = await addPoints(
           workLog.child_id,
           bonusPoints,
           'bonus',
           `Work log bonus for "${workLog.project.name}": ${workLog.hours} hours × ${workLog.project.bonus_rate} rate`,
           req.user?.userId
         );
+        
+        // Automatically convert bonus points to Bitcoin (same logic as points route)
+        try {
+          console.log(`[BITCOIN] Attempting to get Bitcoin price for work log bonus conversion...`);
+          const priceData = await getOrFetchPrice();
+          
+          if (!priceData) {
+            console.warn(`❌ Bitcoin price unavailable when approving work log for child ${workLog.child_id}. Bonus points added but not converted.`);
+          } else {
+            console.log(`[BITCOIN] Price obtained: $${priceData.price_usd} (fetched at: ${priceData.fetched_at.toISOString()})`);
+            
+            // Calculate conversion for bonus points
+            const satoshis = bonusPoints * SATOSHIS_PER_BONUS_POINT;
+            const btcAmount = satoshis / SATOSHIS_PER_BTC;
+            const usdValue = btcAmount * priceData.price_usd;
+            
+            console.log(`[BITCOIN] Converting work log bonus: ${bonusPoints} points = ${satoshis} satoshis (${btcAmount} BTC = $${usdValue.toFixed(2)})`);
+            
+            // Ensure pointId is valid
+            if (!pointRecord || !pointRecord.id) {
+              throw new Error(`Cannot create conversion: pointRecord is invalid. Point record: ${JSON.stringify(pointRecord)}`);
+            }
+            
+            const pointIdForConversion = Number(pointRecord.id);
+            if (!pointIdForConversion || isNaN(pointIdForConversion) || pointIdForConversion <= 0) {
+              throw new Error(`Invalid point ID for conversion: ${pointRecord.id} (converted to ${pointIdForConversion})`);
+            }
+            
+            console.log(`[BITCOIN] Creating conversion with pointId: ${pointIdForConversion}`);
+            
+            // Create conversion record automatically (linked to the point)
+            const conversionResult = await createConversion({
+              childId: workLog.child_id,
+              pointId: pointIdForConversion,
+              bonusPointsConverted: bonusPoints,
+              satoshis,
+              btcAmount,
+              usdValue,
+              priceUsd: priceData.price_usd,
+              priceTimestamp: priceData.fetched_at,
+              parentId: req.user?.userId,
+            });
+            
+            console.log(`✓ [BITCOIN] Successfully created work log bonus conversion:`, {
+              conversion_id: conversionResult.id,
+              point_id: conversionResult.point_id,
+              child_id: conversionResult.child_id,
+              satoshis: conversionResult.satoshis
+            });
+          }
+        } catch (error) {
+          // Log error but don't fail the approval if conversion fails
+          console.error(`❌ FAILED to auto-convert work log bonus points to Bitcoin for child ${workLog.child_id}:`, error);
+          if (error instanceof Error) {
+            console.error('Error message:', error.message);
+            console.error('Error stack:', error.stack);
+          }
+          // Don't throw - allow approval to succeed even if conversion fails
+        }
       }
     }
     
