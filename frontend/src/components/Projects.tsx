@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react';
 import { api } from '../utils/api';
-import type { Project, CreateProjectRequest, UpdateProjectRequest } from '../../../shared/src/types';
+import type { Project, CreateProjectRequest, UpdateProjectRequest, ProjectStatistics } from '../../../shared/src/types';
 
 export default function Projects() {
   const [projects, setProjects] = useState<Project[]>([]);
+  const [projectStats, setProjectStats] = useState<{ [projectId: number]: ProjectStatistics }>({});
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isCreating, setIsCreating] = useState(false);
@@ -36,8 +37,12 @@ export default function Projects() {
     setIsLoading(true);
     setError(null);
     try {
-      const data = await api.getProjects();
-      setProjects(data);
+      const [projectsData, statsData] = await Promise.all([
+        api.getProjects(),
+        api.getProjectStatistics().catch(() => ({})), // Don't fail if stats fail
+      ]);
+      setProjects(projectsData);
+      setProjectStats(statsData);
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to load projects';
       setError(message);
@@ -84,7 +89,7 @@ export default function Projects() {
       setStatus('active');
       setIsCreating(false);
       
-      // Reload projects
+      // Reload projects and statistics
       await loadProjects();
     } catch (err) {
       console.error('Error creating project:', err);
@@ -148,7 +153,7 @@ export default function Projects() {
       // Reset edit form
       handleCancelEdit();
       
-      // Reload projects
+      // Reload projects and statistics
       await loadProjects();
     } catch (err) {
       console.error('Error updating project:', err);
@@ -166,6 +171,7 @@ export default function Projects() {
 
     try {
       await api.deleteProject(projectId);
+      // Reload projects and statistics
       await loadProjects();
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to delete project';
@@ -463,12 +469,40 @@ export default function Projects() {
                       {project.description && (
                         <p className="text-sm text-gray-700 mb-2">{project.description}</p>
                       )}
-                      <div className="text-xs text-gray-500">
+                      <div className="text-xs text-gray-500 mb-3">
                         <span>Start: {new Date(project.start_date).toLocaleDateString()}</span>
                         {project.end_date && (
                           <span className="ml-4">End: {new Date(project.end_date).toLocaleDateString()}</span>
                         )}
                       </div>
+                      
+                      {/* Display hours per child */}
+                      {projectStats[project.id] && projectStats[project.id].child_hours.length > 0 && (
+                        <div className="mt-3 pt-3 border-t border-gray-300">
+                          <h4 className="text-sm font-semibold text-gray-700 mb-2">Hours by Child:</h4>
+                          <div className="space-y-1">
+                            {projectStats[project.id].child_hours.map((childHours) => (
+                              <div key={childHours.child_id} className="flex items-center justify-between text-sm">
+                                <span className="text-gray-600">{childHours.child_name}:</span>
+                                <span className="font-medium text-gray-900">
+                                  {childHours.total_hours} {childHours.total_hours === 1 ? 'hour' : 'hours'}
+                                </span>
+                              </div>
+                            ))}
+                            <div className="flex items-center justify-between text-sm font-semibold pt-2 mt-2 border-t border-gray-300">
+                              <span className="text-gray-700">Total:</span>
+                              <span className="text-gray-900">
+                                {projectStats[project.id].total_hours} {projectStats[project.id].total_hours === 1 ? 'hour' : 'hours'}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                      {projectStats[project.id] && projectStats[project.id].child_hours.length === 0 && (
+                        <div className="mt-3 pt-3 border-t border-gray-300">
+                          <p className="text-xs text-gray-500">No approved hours logged yet</p>
+                        </div>
+                      )}
                     </div>
                     <div className="flex gap-2">
                       <button

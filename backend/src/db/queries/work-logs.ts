@@ -174,19 +174,45 @@ export async function updateWorkLogStatus(
     throw new Error(`Work log is already ${existingLog.status} and cannot be changed`);
   }
   
-  // Update the status
+  // Ensure status value is lowercase and matches constraint exactly
+  const statusValue = status.toLowerCase() as 'approved' | 'declined';
+  
+  if (statusValue !== 'approved' && statusValue !== 'declined') {
+    throw new Error(`Invalid status value: ${status}`);
+  }
+  
+  // Update the status with explicit type casting
   const { data: updatedLog, error: updateError } = await supabase
     .from('work_logs')
-    .update({ status })
+    .update({ status: statusValue })
     .eq('id', workLogId)
+    .eq('status', 'pending') // Additional safety check
     .select(`
       *,
       project:projects(*)
     `)
     .single();
   
-  if (updateError || !updatedLog) {
-    throw new Error(`Failed to update work log status: ${updateError?.message || 'Unknown error'}`);
+  if (updateError) {
+    // Provide more detailed error information
+    const errorMsg = updateError.message || 'Unknown error';
+    const errorCode = updateError.code || '';
+    const errorDetails = updateError.details || '';
+    
+    console.error('Update work log status error:', {
+      message: errorMsg,
+      code: errorCode,
+      details: errorDetails,
+      statusValue,
+      workLogId,
+      existingStatus: existingLog.status,
+    });
+    
+    throw new Error(`Failed to update work log status: ${errorMsg}${errorDetails ? ` (${errorDetails})` : ''}`);
+  }
+  
+  if (!updatedLog) {
+    throw new Error('Work log was not updated (no rows affected)');
   }
   
   return {

@@ -35,9 +35,9 @@ BEGIN
       RAISE NOTICE 'Added project_id column to work_logs';
     END IF;
     
-    -- Add status column if it doesn't exist
+    -- Add status column if it doesn't exist (without inline constraint to avoid naming conflicts)
     IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='work_logs' AND column_name='status') THEN
-      ALTER TABLE work_logs ADD COLUMN status TEXT CHECK(status IN ('pending', 'approved', 'declined')) DEFAULT 'approved';
+      ALTER TABLE work_logs ADD COLUMN status TEXT DEFAULT 'pending';
       RAISE NOTICE 'Added status column to work_logs';
     END IF;
     
@@ -71,6 +71,33 @@ BEGIN
     IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='work_logs' AND column_name='status' AND is_nullable='YES') THEN
       ALTER TABLE work_logs ALTER COLUMN status SET NOT NULL;
       RAISE NOTICE 'Made status NOT NULL';
+    END IF;
+    
+    -- Drop existing status constraint if it exists (to recreate it with proper name)
+    IF EXISTS (
+      SELECT 1 FROM pg_constraint 
+      WHERE conrelid = 'work_logs'::regclass 
+      AND conname LIKE '%status%'
+    ) THEN
+      EXECUTE (
+        SELECT 'ALTER TABLE work_logs DROP CONSTRAINT ' || conname
+        FROM pg_constraint
+        WHERE conrelid = 'work_logs'::regclass
+        AND conname LIKE '%status%'
+        LIMIT 1
+      );
+      RAISE NOTICE 'Dropped existing status constraint';
+    END IF;
+    
+    -- Add named status constraint
+    IF NOT EXISTS (
+      SELECT 1 FROM pg_constraint 
+      WHERE conrelid = 'work_logs'::regclass 
+      AND conname = 'work_logs_status_check'
+    ) THEN
+      ALTER TABLE work_logs
+      ADD CONSTRAINT work_logs_status_check CHECK (status IN ('pending', 'approved', 'declined'));
+      RAISE NOTICE 'Added work_logs_status_check constraint';
     END IF;
     
     -- Drop existing foreign key if it exists (to recreate it)

@@ -7,6 +7,7 @@ import {
   updateProject,
   deleteProject,
 } from '../db/queries/projects.js';
+import { getAllProjectsStatistics } from '../db/queries/project-stats.js';
 import { authenticate, requireRole, type AuthRequest } from '../middleware/auth.js';
 import type { CreateProjectRequest, UpdateProjectRequest } from '../types.js';
 
@@ -17,6 +18,16 @@ router.get('/', authenticate, requireRole('parent'), async (req: AuthRequest, re
   try {
     const projects = await getAllProjects();
     res.json(projects);
+  } catch (error) {
+    next(error);
+  }
+});
+
+// Get project statistics with hours per child (parents only)
+router.get('/statistics', authenticate, requireRole('parent'), async (req: AuthRequest, res, next) => {
+  try {
+    const statistics = await getAllProjectsStatistics();
+    res.json(statistics);
   } catch (error) {
     next(error);
   }

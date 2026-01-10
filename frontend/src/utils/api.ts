@@ -1,4 +1,4 @@
-import type { Child, Point, User, AddPointsRequest, ChildBalance, ApiError, ChangePasswordRequest, ChangePasswordResponse, BitcoinConversion, ConvertBonusRequest, ConvertBonusResponse, ChildBitcoinBalance, WorkLog, AddWorkLogRequest, UpdateWorkLogRequest, Project, CreateProjectRequest, UpdateProjectRequest } from '../../../shared/src/types';
+import type { Child, Point, User, AddPointsRequest, ChildBalance, ApiError, ChangePasswordRequest, ChangePasswordResponse, BitcoinConversion, ConvertBonusRequest, ConvertBonusResponse, ChildBitcoinBalance, WorkLog, AddWorkLogRequest, UpdateWorkLogRequest, Project, CreateProjectRequest, UpdateProjectRequest, ProjectStatistics } from '../../../shared/src/types';
 
 // Automatically detect API URL based on current hostname for local network access
 const getApiBaseUrl = () => {
@@ -136,6 +136,8 @@ export const api = {
     request<Project[]>('/projects/active'),
   getProjectById: (projectId: number): Promise<Project> =>
     request<Project>(`/projects/${projectId}`),
+  getProjectStatistics: (): Promise<{ [projectId: number]: ProjectStatistics }> =>
+    request<{ [projectId: number]: ProjectStatistics }>('/projects/statistics'),
   createProject: (data: CreateProjectRequest): Promise<Project> =>
     request<Project>('/projects', {
       method: 'POST',

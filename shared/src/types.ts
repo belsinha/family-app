@@ -136,6 +136,19 @@ export interface Project {
   updated_at: string;
 }
 
+export interface ProjectChildHours {
+  project_id: number;
+  child_id: number;
+  child_name: string;
+  total_hours: number;
+}
+
+export interface ProjectStatistics {
+  project_id: number;
+  child_hours: ProjectChildHours[];
+  total_hours: number;
+}
+
 export interface CreateProjectRequest {
   name: string;
   description?: string;
