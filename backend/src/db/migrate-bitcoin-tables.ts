@@ -141,11 +141,24 @@ export async function migrateBitcoinTables(): Promise<boolean> {
   // Add point_id column if table exists but column doesn't
   if (conversionsExists && !pointIdColumnExists) {
     console.log('Adding point_id column to bitcoin_conversions table...');
+    // First add the column
     sqlStatements.push(`
       ALTER TABLE bitcoin_conversions 
-      ADD COLUMN IF NOT EXISTS point_id BIGINT,
-      ADD CONSTRAINT IF NOT EXISTS fk_bitcoin_conversions_point_id 
-      FOREIGN KEY (point_id) REFERENCES points(id) ON DELETE CASCADE;
+      ADD COLUMN IF NOT EXISTS point_id BIGINT;
+    `);
+    // Then add the foreign key constraint (separate statement because PostgreSQL doesn't support IF NOT EXISTS for constraints in same statement)
+    sqlStatements.push(`
+      DO $$
+      BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM pg_constraint 
+          WHERE conname = 'fk_bitcoin_conversions_point_id'
+        ) THEN
+          ALTER TABLE bitcoin_conversions 
+          ADD CONSTRAINT fk_bitcoin_conversions_point_id 
+          FOREIGN KEY (point_id) REFERENCES points(id) ON DELETE CASCADE;
+        END IF;
+      END $$;
     `);
     migrated = true;
   }
@@ -199,6 +212,23 @@ export async function cleanupOrphanedConversions(): Promise<number> {
   
   try {
     console.log('[CLEANUP] Starting orphaned Bitcoin conversion cleanup...');
+    
+    // First check if point_id column exists
+    const { data: testQuery, error: columnCheckError } = await supabase
+      .from('bitcoin_conversions')
+      .select('point_id')
+      .limit(1);
+    
+    if (columnCheckError) {
+      // Column doesn't exist - can't clean up orphaned conversions
+      if (columnCheckError.message.includes('column') && columnCheckError.message.includes('does not exist')) {
+        console.log('[CLEANUP] point_id column does not exist yet. Run migration first to add it.');
+        return 0;
+      }
+      // Some other error
+      console.error('[CLEANUP] Error checking for point_id column:', columnCheckError);
+      return 0;
+    }
     
     // Find all conversions with NULL point_id
     const { data: orphaned, error: findError } = await supabase

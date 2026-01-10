@@ -222,6 +222,18 @@ export default function PointLog({ childId, childName, onClose }: PointLogProps)
                 const pointId = Number(point.id);
                 const conversion = conversionMap.get(pointId);
                 
+                // Debug logging for first few points
+                if (sortedPoints.indexOf(point) < 3) {
+                  console.log(`[POINT_LOG] Point ${point.id} (type: ${typeof point.id}, converted to: ${pointId}):`, {
+                    point_id: pointId,
+                    has_conversion: !!conversion,
+                    conversion_id: conversion?.id,
+                    conversion_point_id: conversion?.point_id,
+                    conversion_map_keys: Array.from(conversionMap.keys()),
+                    conversion_map_size: conversionMap.size
+                  });
+                }
+                
                 return (
                   <div
                     key={point.id}

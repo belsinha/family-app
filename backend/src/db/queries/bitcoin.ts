@@ -224,10 +224,15 @@ export async function getConversionsByChildId(childId: number): Promise<BitcoinC
       ? Number(conversion.point_id) 
       : null;
     
-    // Log first few conversions for debugging
-    if (conversions.indexOf(conversion) < 3) {
-      console.log(`Conversion ${conversion.id}: point_id from DB = ${conversion.point_id} (type: ${typeof conversion.point_id}), converted to: ${pointId}`);
-    }
+    // Log all conversions for debugging
+    console.log(`[GET_CONVERSIONS] Conversion ID ${conversion.id}:`, {
+      raw_point_id: conversion.point_id,
+      raw_point_id_type: typeof conversion.point_id,
+      converted_point_id: pointId,
+      child_id: conversion.child_id,
+      satoshis: conversion.satoshis,
+      created_at: conversion.created_at
+    });
     
     return {
       ...conversion,
@@ -236,7 +241,18 @@ export async function getConversionsByChildId(childId: number): Promise<BitcoinC
     };
   }) as BitcoinConversion[];
   
-  console.log(`Retrieved ${mappedConversions.length} conversions for child ${childId}, ${mappedConversions.filter(c => c.point_id !== null).length} with point_id`);
+  console.log(`[GET_CONVERSIONS] Retrieved ${mappedConversions.length} total conversions for child ${childId}`);
+  console.log(`[GET_CONVERSIONS] ${mappedConversions.filter(c => c.point_id !== null).length} conversions have valid point_id`);
+  console.log(`[GET_CONVERSIONS] ${mappedConversions.filter(c => c.point_id === null).length} conversions have NULL point_id`);
+  
+  const withPointId = mappedConversions.filter(c => c.point_id !== null);
+  if (withPointId.length > 0) {
+    console.log(`[GET_CONVERSIONS] Conversions with point_id:`, withPointId.map(c => ({
+      id: c.id,
+      point_id: c.point_id,
+      child_id: c.child_id
+    })));
+  }
   
   return mappedConversions;
 }
