@@ -78,9 +78,10 @@ export async function migrateBitcoinTables(): Promise<boolean> {
   }
 
   // Try to create tables using pg library
-  let pg: any;
+  let pg: any = null;
   try {
-    pg = await import('pg');
+    // Dynamic import to avoid TypeScript error if pg is not installed
+    pg = await import('pg' as string);
   } catch (error) {
     // pg not available, will use fallback
     console.warn('pg library not available, cannot auto-create tables');
@@ -187,5 +188,53 @@ export async function migrateBitcoinTables(): Promise<boolean> {
   }
 
   return migrated;
+}
+
+/**
+ * Clean up orphaned Bitcoin conversions (those with NULL point_id)
+ * These are from before we added point_id validation
+ */
+export async function cleanupOrphanedConversions(): Promise<number> {
+  const supabase = getSupabaseClient();
+  
+  try {
+    // Find all conversions with NULL point_id
+    const { data: orphaned, error: findError } = await supabase
+      .from('bitcoin_conversions')
+      .select('id, child_id, created_at, satoshis')
+      .is('point_id', null);
+    
+    if (findError) {
+      console.error('Error finding orphaned conversions:', findError);
+      return 0;
+    }
+    
+    if (!orphaned || orphaned.length === 0) {
+      return 0;
+    }
+    
+    console.log(`Found ${orphaned.length} orphaned Bitcoin conversion(s) with NULL point_id. Cleaning up...`);
+    
+    // Delete orphaned conversions
+    const { error: deleteError } = await supabase
+      .from('bitcoin_conversions')
+      .delete()
+      .is('point_id', null);
+    
+    if (deleteError) {
+      console.error('Error deleting orphaned conversions:', deleteError);
+      return 0;
+    }
+    
+    console.log(`✓ Cleaned up ${orphaned.length} orphaned Bitcoin conversion(s)`);
+    orphaned.forEach((conv) => {
+      console.log(`  - Deleted conversion ID ${conv.id} (child ${conv.child_id}, ${conv.satoshis} satoshis, created ${conv.created_at})`);
+    });
+    
+    return orphaned.length;
+  } catch (error) {
+    console.error('Error during orphaned conversion cleanup:', error);
+    return 0;
+  }
 }
 
