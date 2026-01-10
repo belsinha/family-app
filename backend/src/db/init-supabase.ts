@@ -1,6 +1,7 @@
 import { initSupabaseConnection, getSupabaseClient } from './supabase.js';
 import { seedDatabase } from './seed-supabase.js';
 import { migrateBitcoinTables, cleanupOrphanedConversions } from './migrate-bitcoin-tables.js';
+import { migrateProjectsTable, migrateWorkLogsForProjects } from './migrate-project-tables.js';
 
 /**
  * Migrate work_logs table - creates it if it doesn't exist
@@ -76,20 +77,62 @@ async function migrateWorkLogsTable(): Promise<boolean> {
 
   const sqlStatements: string[] = [];
 
+  // First ensure projects table exists (required for foreign key)
   console.log('Creating work_logs table...');
+  
+  // Check if projects table exists first
+  let projectsExists = false;
+  try {
+    const { error: projectsCheckError } = await supabase
+      .from('projects')
+      .select('id')
+      .limit(1);
+    projectsExists = !projectsCheckError;
+  } catch {
+    projectsExists = false;
+  }
+  
+  if (!projectsExists) {
+    console.warn('⚠️  projects table does not exist. Please create it first.');
+    console.warn('   The work_logs table requires projects table to exist.');
+    console.warn('   Projects table migration should run before work_logs migration.');
+    return false;
+  }
+  
+  // Create a default project if none exists (needed for the foreign key)
+  sqlStatements.push(`
+    INSERT INTO projects (name, description, start_date, bonus_rate, status)
+    SELECT 
+      'Default Project',
+      'Default project for new work logs',
+      CURRENT_DATE,
+      1.0,
+      'active'
+    WHERE NOT EXISTS (SELECT 1 FROM projects LIMIT 1);
+  `);
+  
   sqlStatements.push(`
     CREATE TABLE IF NOT EXISTS work_logs (
       id BIGSERIAL PRIMARY KEY,
       child_id BIGINT NOT NULL,
+      project_id BIGINT NOT NULL,
       hours NUMERIC NOT NULL CHECK(hours > 0),
       description TEXT NOT NULL,
       work_date DATE NOT NULL DEFAULT CURRENT_DATE,
+      status TEXT NOT NULL CHECK(status IN ('pending', 'approved', 'declined')) DEFAULT 'pending',
       created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-      FOREIGN KEY (child_id) REFERENCES children(id) ON DELETE CASCADE
+      FOREIGN KEY (child_id) REFERENCES children(id) ON DELETE CASCADE,
+      FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE RESTRICT
     );
   `);
   sqlStatements.push(`
     CREATE INDEX IF NOT EXISTS idx_work_logs_child_id ON work_logs(child_id);
+  `);
+  sqlStatements.push(`
+    CREATE INDEX IF NOT EXISTS idx_work_logs_project_id ON work_logs(project_id);
+  `);
+  sqlStatements.push(`
+    CREATE INDEX IF NOT EXISTS idx_work_logs_status ON work_logs(status);
   `);
   sqlStatements.push(`
     CREATE INDEX IF NOT EXISTS idx_work_logs_work_date ON work_logs(work_date);
@@ -172,12 +215,28 @@ export async function initDatabase() {
       // Don't throw - allow app to continue even if Bitcoin tables don't exist yet
     }
     
-    // Migrate work_logs table if it doesn't exist
+    // Migrate projects table if it doesn't exist
+    try {
+      await migrateProjectsTable();
+    } catch (error) {
+      console.warn('Projects table migration failed (non-critical):', error);
+      // Don't throw - allow app to continue even if projects table doesn't exist yet
+    }
+    
+    // Migrate work_logs table if it doesn't exist (old version without project_id)
     try {
       await migrateWorkLogsTable();
     } catch (error) {
       console.warn('Work logs table migration failed (non-critical):', error);
       // Don't throw - allow app to continue even if work_logs table doesn't exist yet
+    }
+    
+    // Migrate work_logs table to add project_id and status if needed
+    try {
+      await migrateWorkLogsForProjects();
+    } catch (error) {
+      console.warn('Work logs project migration failed (non-critical):', error);
+      // Don't throw - allow app to continue even if migration doesn't complete yet
     }
     
     // Clean up orphaned conversions (those with NULL point_id)
