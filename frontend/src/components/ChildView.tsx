@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { api } from '../utils/api';
-import type { Child, ChildBalance, Point, ChildBitcoinBalance } from '../../../shared/src/types';
+import type { Child, ChildBalance, Point, ChildBitcoinBalance, WorkLog } from '../../../shared/src/types';
 import BitcoinPrice from './BitcoinPrice';
+import WorkLog from './WorkLog';
 
 export default function ChildView() {
   const { user } = useAuth();
@@ -11,6 +12,8 @@ export default function ChildView() {
   const [points, setPoints] = useState<Point[]>([]);
   const [bitcoinBalance, setBitcoinBalance] = useState<ChildBitcoinBalance | null>(null);
   const [bitcoinPrice, setBitcoinPrice] = useState<{ price_usd: number; fetched_at: string } | null>(null);
+  const [workLogs, setWorkLogs] = useState<WorkLog[]>([]);
+  const [showWorkLog, setShowWorkLog] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -32,16 +35,18 @@ export default function ChildView() {
 
         setChild(childRecord);
 
-        // Load balance, points, and Bitcoin data
-        const [balanceData, pointsData, bitcoinData, priceData] = await Promise.all([
+        // Load balance, points, work logs, and Bitcoin data
+        const [balanceData, pointsData, workLogsData, bitcoinData, priceData] = await Promise.all([
           api.getChildBalance(childRecord.id),
           api.getPointsByChildIdLast7Days(childRecord.id),
+          api.getWorkLogsByChildId(childRecord.id).catch(() => []),
           api.getBitcoinBalance(childRecord.id).catch(() => null),
           api.getBitcoinPrice().catch(() => null),
         ]);
 
         setBalance(balanceData);
         setPoints(pointsData);
+        setWorkLogs(workLogsData);
         setBitcoinBalance(bitcoinData);
         setBitcoinPrice(priceData);
         setError(null);
@@ -163,8 +168,12 @@ export default function ChildView() {
       </div>
 
       <div className="bg-white rounded-lg shadow-md p-6 mb-6">
-        <h3 className="text-xl font-bold text-gray-900 mb-2">Recent Points</h3>
-        <p className="text-sm text-gray-500 mb-4">Last 7 days</p>
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <h3 className="text-xl font-bold text-gray-900 mb-2">Recent Points</h3>
+            <p className="text-sm text-gray-500">Last 7 days</p>
+          </div>
+        </div>
         {points.length === 0 ? (
           <p className="text-gray-600">No points recorded in the last 7 days.</p>
         ) : (
@@ -209,9 +218,81 @@ export default function ChildView() {
         )}
       </div>
 
+      <div className="bg-white rounded-lg shadow-md p-6 mb-6">
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <h3 className="text-xl font-bold text-gray-900 mb-2">Work Logs</h3>
+            <p className="text-sm text-gray-500">Track your work hours</p>
+          </div>
+          <button
+            onClick={() => setShowWorkLog(true)}
+            className="px-4 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors"
+          >
+            + Add Work Log
+          </button>
+        </div>
+        {workLogs.length === 0 ? (
+          <p className="text-gray-600">No work logs recorded. Click "Add Work Log" to get started.</p>
+        ) : (
+          <div className="space-y-3">
+            {workLogs.slice(0, 5).map((log) => (
+              <div
+                key={log.id}
+                className="p-4 rounded-lg border bg-blue-50 border-blue-200"
+              >
+                <div className="flex items-start justify-between">
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2 mb-2">
+                      <span className="font-semibold text-lg text-blue-700">
+                        {Number(log.hours)} hour{Number(log.hours) !== 1 ? 's' : ''}
+                      </span>
+                      <span className="text-xs px-2 py-1 rounded bg-blue-200 text-blue-800">
+                        {new Date(log.work_date).toLocaleDateString('en-US', {
+                          year: 'numeric',
+                          month: 'short',
+                          day: 'numeric'
+                        })}
+                      </span>
+                    </div>
+                    <p className="text-sm text-gray-700 mb-2">{log.description}</p>
+                    <p className="text-xs text-gray-500">
+                      Logged on {new Date(log.created_at).toLocaleString()}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            ))}
+            {workLogs.length > 5 && (
+              <button
+                onClick={() => setShowWorkLog(true)}
+                className="w-full mt-2 px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg font-medium transition-colors"
+              >
+                View All Work Logs ({workLogs.length} total)
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+
       <div className="mb-6">
         <BitcoinPrice />
       </div>
+
+      {showWorkLog && child && (
+        <WorkLog
+          childId={child.id}
+          childName={child.name}
+          onClose={() => setShowWorkLog(false)}
+          onCreate={async () => {
+            try {
+              const logs = await api.getWorkLogsByChildId(child.id);
+              setWorkLogs(logs);
+            } catch (err) {
+              console.error('Failed to refresh work logs:', err);
+            }
+          }}
+        />
+      )}
     </div>
   );
 }

@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { api } from '../utils/api';
 import type { Child, ChildBalance, ChildBitcoinBalance } from '../../../shared/src/types';
 import PointLog from './PointLog';
+import WorkLog from './WorkLog';
 
 interface ChildCardProps {
   child: Child;
@@ -18,6 +19,7 @@ export default function ChildCard({ child, initialBalance, onBalanceUpdate }: Ch
   const [showDescriptionInput, setShowDescriptionInput] = useState<'bonus' | 'demerit' | null>(null);
   const [description, setDescription] = useState('');
   const [showPointLog, setShowPointLog] = useState(false);
+  const [showWorkLog, setShowWorkLog] = useState(false);
   const [bitcoinBalance, setBitcoinBalance] = useState<ChildBitcoinBalance | null>(null);
   const [bitcoinPrice, setBitcoinPrice] = useState<{ price_usd: number; fetched_at: string } | null>(null);
   const [showUndoConfirm, setShowUndoConfirm] = useState(false);
@@ -360,12 +362,18 @@ export default function ChildCard({ child, initialBalance, onBalanceUpdate }: Ch
         </div>
       )}
 
-      <div className="mt-4 pt-4 border-t border-gray-200">
+      <div className="mt-4 pt-4 border-t border-gray-200 space-y-2">
         <button
           onClick={() => setShowPointLog(true)}
           className="w-full bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium py-2 px-4 rounded-lg transition-colors"
         >
           Point Log
+        </button>
+        <button
+          onClick={() => setShowWorkLog(true)}
+          className="w-full bg-blue-100 hover:bg-blue-200 text-blue-700 font-medium py-2 px-4 rounded-lg transition-colors"
+        >
+          Work Log
         </button>
       </div>
 
@@ -374,6 +382,14 @@ export default function ChildCard({ child, initialBalance, onBalanceUpdate }: Ch
           childId={child.id}
           childName={child.name}
           onClose={() => setShowPointLog(false)}
+        />
+      )}
+
+      {showWorkLog && (
+        <WorkLog
+          childId={child.id}
+          childName={child.name}
+          onClose={() => setShowWorkLog(false)}
         />
       )}
 

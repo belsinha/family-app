@@ -120,4 +120,21 @@ export interface ConvertBonusResponse {
   priceTimestamp: string;
 }
 
+// Work Log types
+export interface WorkLog {
+  id: number;
+  child_id: number;
+  hours: number;
+  description: string;
+  work_date: string;
+  created_at: string;
+}
+
+export interface AddWorkLogRequest {
+  childId: number;
+  hours: number;
+  description: string;
+  workDate?: string;
+}
+
 

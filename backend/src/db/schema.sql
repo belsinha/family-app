@@ -35,4 +35,20 @@ CREATE TABLE IF NOT EXISTS points (
   FOREIGN KEY (child_id) REFERENCES children(id)
 );
 
+-- Work logs table
+CREATE TABLE IF NOT EXISTS work_logs (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  child_id INTEGER NOT NULL,
+  hours REAL NOT NULL CHECK(hours > 0),
+  description TEXT NOT NULL,
+  work_date DATE NOT NULL DEFAULT CURRENT_DATE,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (child_id) REFERENCES children(id)
+);
+
+-- Create indexes for work logs
+CREATE INDEX IF NOT EXISTS idx_work_logs_child_id ON work_logs(child_id);
+CREATE INDEX IF NOT EXISTS idx_work_logs_work_date ON work_logs(work_date);
+CREATE INDEX IF NOT EXISTS idx_work_logs_created_at ON work_logs(created_at);
+
 

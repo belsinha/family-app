@@ -4,6 +4,7 @@ import childrenRoutes from './children.js';
 import pointsRoutes from './points.js';
 import authRoutes from './auth.js';
 import bitcoinRoutes from './bitcoin.js';
+import workLogsRoutes from './work-logs.js';
 
 const router = Router();
 
@@ -12,6 +13,7 @@ router.use('/users', usersRoutes);
 router.use('/children', childrenRoutes);
 router.use('/points', pointsRoutes);
 router.use('/bitcoin', bitcoinRoutes);
+router.use('/work-logs', workLogsRoutes);
 
 export default router;
 
