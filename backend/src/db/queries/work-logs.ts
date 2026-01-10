@@ -26,8 +26,19 @@ export async function addWorkLog(
   
   if (insertError || !insertedLog) {
     // If table doesn't exist, provide helpful error message
-    if (insertError && (insertError.message.includes('relation') || insertError.message.includes('does not exist') || insertError.code === 'PGRST116')) {
-      throw new Error('work_logs table does not exist. Please run the database migration to create it.');
+    if (insertError) {
+      const errorMsg = insertError.message?.toLowerCase() || '';
+      const errorCode = insertError.code || '';
+      if (
+        errorMsg.includes('relation') || 
+        errorMsg.includes('does not exist') ||
+        errorMsg.includes('could not find the table') ||
+        errorMsg.includes('schema cache') ||
+        errorCode === 'PGRST116' ||
+        errorCode === '42P01'
+      ) {
+        throw new Error('work_logs table does not exist. Please run the SQL in backend/src/db/schema-postgres-supabase.sql to create it, or run it manually in your Supabase SQL editor.');
+      }
     }
     throw new Error(`Failed to insert work log: ${insertError?.message || 'Unknown error'}`);
   }
@@ -46,8 +57,17 @@ export async function getWorkLogsByChildId(childId: number): Promise<WorkLog[]> 
   
   if (error) {
     // If table doesn't exist, return empty array instead of throwing
-    if (error.message && (error.message.includes('relation') || error.message.includes('does not exist') || error.code === 'PGRST116')) {
-      console.warn('work_logs table does not exist yet. Run the migration or create the table.');
+    const errorMsg = error.message?.toLowerCase() || '';
+    const errorCode = error.code || '';
+    if (
+      errorMsg.includes('relation') || 
+      errorMsg.includes('does not exist') ||
+      errorMsg.includes('could not find the table') ||
+      errorMsg.includes('schema cache') ||
+      errorCode === 'PGRST116' ||
+      errorCode === '42P01'
+    ) {
+      console.warn('work_logs table does not exist yet. Run the migration or create the table using the SQL in backend/src/db/schema-postgres-supabase.sql');
       return [];
     }
     throw new Error(`Failed to fetch work logs: ${error.message}`);

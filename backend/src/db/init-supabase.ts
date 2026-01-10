@@ -19,12 +19,39 @@ async function migrateWorkLogsTable(): Promise<boolean> {
     if (!checkError) {
       workLogsExists = true;
       return false; // Table already exists, no migration needed
-    } else if (!checkError.message.includes('relation') && !checkError.message.includes('does not exist')) {
-      throw checkError;
+    } else {
+      // Check for various table-not-found error messages
+      const errorMsg = checkError.message?.toLowerCase() || '';
+      const errorCode = checkError.code || '';
+      if (
+        errorMsg.includes('relation') || 
+        errorMsg.includes('does not exist') ||
+        errorMsg.includes('could not find the table') ||
+        errorMsg.includes('schema cache') ||
+        errorCode === 'PGRST116' ||
+        errorCode === '42P01' // PostgreSQL relation does not exist error code
+      ) {
+        workLogsExists = false;
+      } else {
+        throw checkError;
+      }
     }
   } catch (error: any) {
-    if (error?.message && (error.message.includes('relation') || error.message.includes('does not exist'))) {
-      workLogsExists = false;
+    if (error?.message) {
+      const errorMsg = error.message.toLowerCase();
+      if (
+        errorMsg.includes('relation') || 
+        errorMsg.includes('does not exist') ||
+        errorMsg.includes('could not find the table') ||
+        errorMsg.includes('schema cache') ||
+        error?.code === 'PGRST116' ||
+        error?.code === '42P01'
+      ) {
+        workLogsExists = false;
+      } else {
+        console.error('Error checking work_logs table:', error);
+        throw error;
+      }
     } else {
       console.error('Error checking work_logs table:', error);
       throw error;
