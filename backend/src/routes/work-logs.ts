@@ -35,6 +35,11 @@ router.post('/', authenticate, async (req: AuthRequest, res, next) => {
     const workLog = await addWorkLog(childId, hours, description, workDate);
     res.status(201).json(workLog);
   } catch (error) {
+    console.error('Error creating work log:', error);
+    if (error instanceof Error) {
+      console.error('Error message:', error.message);
+      console.error('Error stack:', error.stack);
+    }
     next(error);
   }
 });

@@ -68,11 +68,31 @@ export default function WorkLog({ childId, childName, onClose, onCreate }: WorkL
 
     setIsSubmitting(true);
     try {
+      // Ensure date is in YYYY-MM-DD format
+      let dateToSend: string | undefined = undefined;
+      if (workDate) {
+        // If date is already in YYYY-MM-DD format (from date input), use it directly
+        // Otherwise, try to parse it
+        if (workDate.match(/^\d{4}-\d{2}-\d{2}$/)) {
+          dateToSend = workDate;
+        } else {
+          // Try parsing other formats
+          const parsedDate = new Date(workDate);
+          if (!isNaN(parsedDate.getTime())) {
+            dateToSend = parsedDate.toISOString().split('T')[0];
+          } else {
+            setFormError('Invalid date format. Please use YYYY-MM-DD format.');
+            setIsSubmitting(false);
+            return;
+          }
+        }
+      }
+      
       const data: AddWorkLogRequest = {
         childId,
         hours: hoursNum,
         description: description.trim(),
-        workDate: workDate || undefined,
+        workDate: dateToSend,
       };
       
       await api.addWorkLog(data);
@@ -91,8 +111,15 @@ export default function WorkLog({ childId, childName, onClose, onCreate }: WorkL
         onCreate();
       }
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to create work log';
+      console.error('Error creating work log:', err);
+      let message = 'Failed to create work log';
+      if (err instanceof Error) {
+        message = err.message;
+      } else if (typeof err === 'string') {
+        message = err;
+      }
       setFormError(message);
+      setError(null); // Clear any general error when form error is set
     } finally {
       setIsSubmitting(false);
     }
@@ -154,8 +181,15 @@ export default function WorkLog({ childId, childName, onClose, onCreate }: WorkL
         onCreate();
       }
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to update work log';
+      console.error('Error updating work log:', err);
+      let message = 'Failed to update work log';
+      if (err instanceof Error) {
+        message = err.message;
+      } else if (typeof err === 'string') {
+        message = err;
+      }
       setFormError(message);
+      setError(null); // Clear any general error when form error is set
     } finally {
       setIsSubmitting(false);
     }
@@ -287,13 +321,13 @@ export default function WorkLog({ childId, childName, onClose, onCreate }: WorkL
             <div className="text-center py-12">
               <p className="text-gray-600">Loading work logs...</p>
             </div>
-          ) : error ? (
+          ) : error && !formError ? (
             <div className="text-center py-12">
               <div className="bg-red-50 border border-red-200 rounded-lg p-4">
                 <p className="text-red-800">{error}</p>
               </div>
             </div>
-          ) : workLogs.length === 0 ? (
+          ) : workLogs.length === 0 && !isCreating && !formError ? (
             <div className="text-center py-12">
               <p className="text-gray-600">No work logs recorded.</p>
             </div>

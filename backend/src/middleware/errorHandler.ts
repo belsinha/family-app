@@ -11,9 +11,10 @@ export const errorHandler = (
     console.error('Stack:', err.stack);
   }
   
+  // Always return error message for better debugging - this is a family app, not public-facing
   res.status(500).json({
     error: 'Internal server error',
-    message: process.env.NODE_ENV === 'development' ? err.message : undefined,
+    message: err.message || 'An unexpected error occurred',
   });
 };
 

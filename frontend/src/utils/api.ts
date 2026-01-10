@@ -31,8 +31,22 @@ async function request<T>(
     });
 
     if (!response.ok) {
-      const error: ApiError = await response.json();
-      throw new Error(error.message || error.error || 'Request failed');
+      let errorMessage = `Request failed with status ${response.status}`;
+      try {
+        const error: ApiError = await response.json();
+        errorMessage = error.message || error.error || errorMessage;
+      } catch (parseError) {
+        // If response is not JSON, try to get text
+        try {
+          const text = await response.text();
+          if (text) {
+            errorMessage = text;
+          }
+        } catch {
+          // Use default error message
+        }
+      }
+      throw new Error(errorMessage);
     }
 
     return response.json();
