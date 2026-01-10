@@ -3,7 +3,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { api } from '../utils/api';
 import type { Child, ChildBalance, Point, ChildBitcoinBalance, WorkLog } from '../../../shared/src/types';
 import BitcoinPrice from './BitcoinPrice';
-import WorkLog from './WorkLog';
+import WorkLogModal from './WorkLog';
 
 export default function ChildView() {
   const { user } = useAuth();
@@ -279,7 +279,7 @@ export default function ChildView() {
       </div>
 
       {showWorkLog && child && (
-        <WorkLog
+        <WorkLogModal
           childId={child.id}
           childName={child.name}
           onClose={() => setShowWorkLog(false)}

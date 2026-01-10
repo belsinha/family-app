@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { api } from '../utils/api';
 import type { Child, ChildBalance, ChildBitcoinBalance } from '../../../shared/src/types';
 import PointLog from './PointLog';
-import WorkLog from './WorkLog';
+import WorkLogModal from './WorkLog';
 
 interface ChildCardProps {
   child: Child;
@@ -386,7 +386,7 @@ export default function ChildCard({ child, initialBalance, onBalanceUpdate }: Ch
       )}
 
       {showWorkLog && (
-        <WorkLog
+        <WorkLogModal
           childId={child.id}
           childName={child.name}
           onClose={() => setShowWorkLog(false)}
