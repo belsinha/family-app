@@ -1,4 +1,4 @@
-import type { Child, Point, User, AddPointsRequest, ChildBalance, ApiError, ChangePasswordRequest, ChangePasswordResponse, BitcoinConversion, ConvertBonusRequest, ConvertBonusResponse, ChildBitcoinBalance, WorkLog, AddWorkLogRequest, UpdateWorkLogRequest } from '../../../shared/src/types';
+import type { Child, Point, User, AddPointsRequest, ChildBalance, ApiError, ChangePasswordRequest, ChangePasswordResponse, BitcoinConversion, ConvertBonusRequest, ConvertBonusResponse, ChildBitcoinBalance, WorkLog, AddWorkLogRequest, UpdateWorkLogRequest, Project, CreateProjectRequest, UpdateProjectRequest, ApproveWorkLogRequest } from '../../../shared/src/types';
 
 // Automatically detect API URL based on current hostname for local network access
 const getApiBaseUrl = () => {
@@ -120,6 +120,35 @@ export const api = {
     request<WorkLog>(`/work-logs/${workLogId}`, {
       method: 'PUT',
       body: JSON.stringify(data),
+    }),
+  getPendingWorkLogs: (): Promise<WorkLog[]> =>
+    request<WorkLog[]>('/work-logs/pending'),
+  approveWorkLog: (workLogId: number, action: 'approve' | 'decline'): Promise<WorkLog> =>
+    request<WorkLog>(`/work-logs/${workLogId}/approve`, {
+      method: 'POST',
+      body: JSON.stringify({ action }),
+    }),
+
+  // Projects
+  getProjects: (): Promise<Project[]> =>
+    request<Project[]>('/projects'),
+  getActiveProjects: (): Promise<Project[]> =>
+    request<Project[]>('/projects/active'),
+  getProjectById: (projectId: number): Promise<Project> =>
+    request<Project>(`/projects/${projectId}`),
+  createProject: (data: CreateProjectRequest): Promise<Project> =>
+    request<Project>('/projects', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+  updateProject: (projectId: number, data: UpdateProjectRequest): Promise<Project> =>
+    request<Project>(`/projects/${projectId}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    }),
+  deleteProject: (projectId: number): Promise<{ message: string }> =>
+    request<{ message: string }>(`/projects/${projectId}`, {
+      method: 'DELETE',
     }),
 };
 

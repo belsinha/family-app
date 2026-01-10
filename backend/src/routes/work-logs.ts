@@ -1,17 +1,26 @@
 import { Router } from 'express';
-import { addWorkLog, getWorkLogsByChildId, updateWorkLog, getWorkLogById } from '../db/queries/work-logs.js';
+import {
+  addWorkLog,
+  getWorkLogsByChildId,
+  updateWorkLog,
+  getWorkLogById,
+  getPendingWorkLogs,
+  updateWorkLogStatus,
+} from '../db/queries/work-logs.js';
 import { authenticate, requireRole, type AuthRequest } from '../middleware/auth.js';
 import { getChildByUserId } from '../db/queries/children.js';
+import { getProjectById } from '../db/queries/projects.js';
+import { addPoints } from '../db/queries/points.js';
 
 const router = Router();
 
 // Add work log - children can create for themselves
 router.post('/', authenticate, async (req: AuthRequest, res, next) => {
   try {
-    const { childId, hours, description, workDate } = req.body;
+    const { childId, projectId, hours, description, workDate } = req.body;
     
-    if (!childId || hours === undefined || !description) {
-      return res.status(400).json({ error: 'Missing required fields: childId, hours, description' });
+    if (!childId || !projectId || hours === undefined || !description) {
+      return res.status(400).json({ error: 'Missing required fields: childId, projectId, hours, description' });
     }
     
     // Validate hours is positive
@@ -24,6 +33,26 @@ router.post('/', authenticate, async (req: AuthRequest, res, next) => {
       return res.status(400).json({ error: 'Description cannot be empty' });
     }
     
+    // Verify project exists and is active
+    const project = await getProjectById(projectId);
+    if (!project) {
+      return res.status(404).json({ error: 'Project not found' });
+    }
+    
+    if (project.status !== 'active') {
+      return res.status(400).json({ error: 'Cannot log hours for inactive project' });
+    }
+    
+    // Check project dates
+    const today = new Date().toISOString().split('T')[0];
+    if (project.start_date > today) {
+      return res.status(400).json({ error: 'Project has not started yet' });
+    }
+    
+    if (project.end_date && project.end_date < today) {
+      return res.status(400).json({ error: 'Project has ended' });
+    }
+    
     // If child user, verify they're creating for themselves
     if (req.user?.role === 'child') {
       const child = await getChildByUserId(req.user.userId);
@@ -32,7 +61,7 @@ router.post('/', authenticate, async (req: AuthRequest, res, next) => {
       }
     }
     
-    const workLog = await addWorkLog(childId, hours, description, workDate);
+    const workLog = await addWorkLog(childId, projectId, hours, description, workDate);
     res.status(201).json(workLog);
   } catch (error) {
     console.error('Error creating work log:', error);
@@ -68,7 +97,7 @@ router.get('/child/:childId', authenticate, async (req: AuthRequest, res, next) 
   }
 });
 
-// Update work log - only parents can edit
+// Update work log - only parents can edit (only if status is pending)
 router.put('/:workLogId', authenticate, requireRole('parent'), async (req: AuthRequest, res, next) => {
   try {
     const workLogId = parseInt(req.params.workLogId, 10);
@@ -92,14 +121,88 @@ router.put('/:workLogId', authenticate, requireRole('parent'), async (req: AuthR
       return res.status(400).json({ error: 'Description cannot be empty' });
     }
     
-    // Verify work log exists
+    // Verify work log exists and can be edited
     const existingLog = await getWorkLogById(workLogId);
     if (!existingLog) {
       return res.status(404).json({ error: 'Work log not found' });
     }
     
+    if (existingLog.status !== 'pending') {
+      return res.status(400).json({ error: 'Cannot edit work log that has been approved or declined' });
+    }
+    
     const updatedLog = await updateWorkLog(workLogId, hours, description, workDate);
     res.json(updatedLog);
+  } catch (error) {
+    next(error);
+  }
+});
+
+// Get pending work logs (parents only)
+router.get('/pending', authenticate, requireRole('parent'), async (req: AuthRequest, res, next) => {
+  try {
+    const pendingLogs = await getPendingWorkLogs();
+    res.json(pendingLogs);
+  } catch (error) {
+    next(error);
+  }
+});
+
+// Approve or decline work log (parents only)
+router.post('/:workLogId/approve', authenticate, requireRole('parent'), async (req: AuthRequest, res, next) => {
+  try {
+    const workLogId = parseInt(req.params.workLogId, 10);
+    const { action } = req.body;
+    
+    if (isNaN(workLogId)) {
+      return res.status(400).json({ error: 'Invalid work log ID' });
+    }
+    
+    if (!action || (action !== 'approve' && action !== 'decline')) {
+      return res.status(400).json({ error: 'Action must be either "approve" or "decline"' });
+    }
+    
+    // Get the work log
+    const workLog = await getWorkLogById(workLogId);
+    if (!workLog) {
+      return res.status(404).json({ error: 'Work log not found' });
+    }
+    
+    if (workLog.status !== 'pending') {
+      return res.status(400).json({ error: `Work log is already ${workLog.status}` });
+    }
+    
+    // Get project to calculate bonus
+    if (!workLog.project) {
+      const project = await getProjectById(workLog.project_id);
+      if (!project) {
+        return res.status(404).json({ error: 'Project not found' });
+      }
+      workLog.project = project;
+    }
+    
+    // Update status
+    const updatedLog = await updateWorkLogStatus(workLogId, action);
+    
+    // If approved, calculate and award bonus
+    if (action === 'approve') {
+      const bonusPoints = Math.floor(workLog.hours * workLog.project.bonus_rate);
+      
+      if (bonusPoints > 0) {
+        // Award bonus points
+        await addPoints(
+          workLog.child_id,
+          bonusPoints,
+          'bonus',
+          `Work log bonus for "${workLog.project.name}": ${workLog.hours} hours × ${workLog.project.bonus_rate} rate`,
+          req.user?.userId
+        );
+      }
+    }
+    
+    // Fetch the updated log with project info
+    const finalLog = await getWorkLogById(workLogId);
+    res.json(finalLog);
   } catch (error) {
     next(error);
   }

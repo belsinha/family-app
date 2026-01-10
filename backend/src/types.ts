@@ -124,14 +124,18 @@ export interface ConvertBonusResponse {
 export interface WorkLog {
   id: number;
   child_id: number;
+  project_id: number;
   hours: number;
   description: string;
   work_date: string;
+  status: WorkLogStatus;
   created_at: string;
+  project?: Project;
 }
 
 export interface AddWorkLogRequest {
   childId: number;
+  projectId: number;
   hours: number;
   description: string;
   workDate?: string;
@@ -141,6 +145,40 @@ export interface UpdateWorkLogRequest {
   hours: number;
   description: string;
   workDate?: string;
+}
+
+// Project types
+export type ProjectStatus = 'active' | 'inactive';
+export type WorkLogStatus = 'pending' | 'approved' | 'declined';
+
+export interface Project {
+  id: number;
+  name: string;
+  description: string | null;
+  start_date: string;
+  end_date: string | null;
+  bonus_rate: number;
+  status: ProjectStatus;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CreateProjectRequest {
+  name: string;
+  description?: string;
+  startDate: string;
+  endDate?: string;
+  bonusRate: number;
+  status?: ProjectStatus;
+}
+
+export interface UpdateProjectRequest {
+  name: string;
+  description?: string;
+  startDate: string;
+  endDate?: string;
+  bonusRate: number;
+  status: ProjectStatus;
 }
 
 

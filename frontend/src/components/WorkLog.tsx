@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { api } from '../utils/api';
 import { useAuth } from '../contexts/AuthContext';
-import type { WorkLog, AddWorkLogRequest, UpdateWorkLogRequest } from '../../../shared/src/types';
+import type { WorkLog, AddWorkLogRequest, UpdateWorkLogRequest, Project } from '../../../shared/src/types';
 
 interface WorkLogProps {
   childId: number;
@@ -14,12 +14,14 @@ export default function WorkLog({ childId, childName, onClose, onCreate }: WorkL
   const { user } = useAuth();
   const isParent = user?.role === 'parent';
   const [workLogs, setWorkLogs] = useState<WorkLog[]>([]);
+  const [activeProjects, setActiveProjects] = useState<Project[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isCreating, setIsCreating] = useState(false);
   const [editingLogId, setEditingLogId] = useState<number | null>(null);
   
   // Form state for create
+  const [projectId, setProjectId] = useState<string>('');
   const [hours, setHours] = useState<string>('');
   const [description, setDescription] = useState<string>('');
   const [workDate, setWorkDate] = useState<string>(new Date().toISOString().split('T')[0]);
@@ -33,6 +35,7 @@ export default function WorkLog({ childId, childName, onClose, onCreate }: WorkL
 
   useEffect(() => {
     loadWorkLogs();
+    loadActiveProjects();
   }, [childId]);
 
   const loadWorkLogs = async () => {
@@ -50,11 +53,28 @@ export default function WorkLog({ childId, childName, onClose, onCreate }: WorkL
     }
   };
 
+  const loadActiveProjects = async () => {
+    try {
+      const projects = await api.getActiveProjects();
+      setActiveProjects(projects);
+      if (projects.length > 0 && !projectId) {
+        setProjectId(String(projects[0].id));
+      }
+    } catch (err) {
+      console.error('Error loading active projects:', err);
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setFormError(null);
 
     // Validation
+    if (!projectId) {
+      setFormError('Please select a project');
+      return;
+    }
+
     const hoursNum = parseFloat(hours);
     if (!hours || isNaN(hoursNum) || hoursNum <= 0) {
       setFormError('Hours must be a positive number');
@@ -90,6 +110,7 @@ export default function WorkLog({ childId, childName, onClose, onCreate }: WorkL
       
       const data: AddWorkLogRequest = {
         childId,
+        projectId: parseInt(projectId, 10),
         hours: hoursNum,
         description: description.trim(),
         workDate: dateToSend,
@@ -101,6 +122,9 @@ export default function WorkLog({ childId, childName, onClose, onCreate }: WorkL
       setHours('');
       setDescription('');
       setWorkDate(new Date().toISOString().split('T')[0]);
+      if (activeProjects.length > 0) {
+        setProjectId(String(activeProjects[0].id));
+      }
       setIsCreating(false);
       
       // Reload work logs
@@ -241,6 +265,28 @@ export default function WorkLog({ childId, childName, onClose, onCreate }: WorkL
             <div className="mb-6 p-4 bg-gray-50 rounded-lg border border-gray-200">
               <h3 className="text-lg font-semibold text-gray-900 mb-4">New Work Log Entry</h3>
               <form onSubmit={handleSubmit} className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Project *
+                  </label>
+                  <select
+                    value={projectId}
+                    onChange={(e) => setProjectId(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    required
+                  >
+                    {activeProjects.length === 0 ? (
+                      <option value="">No active projects available</option>
+                    ) : (
+                      activeProjects.map((project) => (
+                        <option key={project.id} value={project.id}>
+                          {project.name} ({project.bonus_rate} points/hour)
+                        </option>
+                      ))
+                    )}
+                  </select>
+                </div>
+
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
                     Hours Worked *
@@ -413,9 +459,23 @@ export default function WorkLog({ childId, childName, onClose, onCreate }: WorkL
                     <>
                       <div className="flex items-start justify-between">
                         <div className="flex-1">
-                          <div className="flex items-center gap-2 mb-2">
+                          <div className="flex items-center gap-2 mb-2 flex-wrap">
                             <span className="font-semibold text-lg text-blue-700">
                               {Number(log.hours)} hour{Number(log.hours) !== 1 ? 's' : ''}
+                            </span>
+                            {log.project && (
+                              <span className="text-xs px-2 py-1 rounded bg-purple-200 text-purple-800">
+                                {log.project.name}
+                              </span>
+                            )}
+                            <span className={`text-xs px-2 py-1 rounded ${
+                              log.status === 'approved' 
+                                ? 'bg-green-200 text-green-800'
+                                : log.status === 'declined'
+                                ? 'bg-red-200 text-red-800'
+                                : 'bg-yellow-200 text-yellow-800'
+                            }`}>
+                              {log.status.charAt(0).toUpperCase() + log.status.slice(1)}
                             </span>
                             <span className="text-xs px-2 py-1 rounded bg-blue-200 text-blue-800">
                               {new Date(log.work_date).toLocaleDateString('en-US', {
@@ -430,7 +490,7 @@ export default function WorkLog({ childId, childName, onClose, onCreate }: WorkL
                             Logged on {new Date(log.created_at).toLocaleString()}
                           </p>
                         </div>
-                        {isParent && (
+                        {isParent && log.status === 'pending' && (
                           <button
                             onClick={() => handleEdit(log)}
                             className="ml-4 px-3 py-1 text-sm bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors"

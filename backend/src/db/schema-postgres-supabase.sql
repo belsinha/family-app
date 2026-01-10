@@ -66,15 +66,31 @@ CREATE TABLE IF NOT EXISTS bitcoin_conversions (
   FOREIGN KEY (parent_id) REFERENCES users(id) ON DELETE SET NULL
 );
 
+-- Projects table
+CREATE TABLE IF NOT EXISTS projects (
+  id BIGSERIAL PRIMARY KEY,
+  name TEXT NOT NULL,
+  description TEXT,
+  start_date DATE NOT NULL,
+  end_date DATE,
+  bonus_rate NUMERIC NOT NULL CHECK(bonus_rate >= 0),
+  status TEXT NOT NULL CHECK(status IN ('active', 'inactive')) DEFAULT 'active',
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
 -- Work logs table
 CREATE TABLE IF NOT EXISTS work_logs (
   id BIGSERIAL PRIMARY KEY,
   child_id BIGINT NOT NULL,
+  project_id BIGINT NOT NULL,
   hours NUMERIC NOT NULL CHECK(hours > 0),
   description TEXT NOT NULL,
   work_date DATE NOT NULL DEFAULT CURRENT_DATE,
+  status TEXT NOT NULL CHECK(status IN ('pending', 'approved', 'declined')) DEFAULT 'pending',
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-  FOREIGN KEY (child_id) REFERENCES children(id) ON DELETE CASCADE
+  FOREIGN KEY (child_id) REFERENCES children(id) ON DELETE CASCADE,
+  FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE RESTRICT
 );
 
 -- Create indexes for better performance
@@ -89,7 +105,11 @@ CREATE INDEX IF NOT EXISTS idx_bitcoin_price_cache_fetched_at ON bitcoin_price_c
 CREATE INDEX IF NOT EXISTS idx_bitcoin_conversions_child_id ON bitcoin_conversions(child_id);
 CREATE INDEX IF NOT EXISTS idx_bitcoin_conversions_parent_id ON bitcoin_conversions(parent_id);
 CREATE INDEX IF NOT EXISTS idx_bitcoin_conversions_created_at ON bitcoin_conversions(created_at);
+CREATE INDEX IF NOT EXISTS idx_projects_status ON projects(status);
+CREATE INDEX IF NOT EXISTS idx_projects_start_date ON projects(start_date);
 CREATE INDEX IF NOT EXISTS idx_work_logs_child_id ON work_logs(child_id);
+CREATE INDEX IF NOT EXISTS idx_work_logs_project_id ON work_logs(project_id);
+CREATE INDEX IF NOT EXISTS idx_work_logs_status ON work_logs(status);
 CREATE INDEX IF NOT EXISTS idx_work_logs_work_date ON work_logs(work_date);
 CREATE INDEX IF NOT EXISTS idx_work_logs_created_at ON work_logs(created_at);
 

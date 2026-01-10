@@ -3,6 +3,7 @@ import type { WorkLog } from '../../types.js';
 
 export async function addWorkLog(
   childId: number,
+  projectId: number,
   hours: number,
   description: string,
   workDate?: string
@@ -12,14 +13,16 @@ export async function addWorkLog(
   // Use provided date or default to current date
   const dateToUse = workDate || new Date().toISOString().split('T')[0];
   
-  // Insert the work log
+  // Insert the work log with status 'pending'
   const { data: insertedLog, error: insertError } = await supabase
     .from('work_logs')
     .insert({
       child_id: childId,
+      project_id: projectId,
       hours,
       description,
       work_date: dateToUse,
+      status: 'pending',
     })
     .select()
     .single();
@@ -50,7 +53,10 @@ export async function getWorkLogsByChildId(childId: number): Promise<WorkLog[]> 
   const supabase = getSupabaseClient();
   const { data: workLogs, error } = await supabase
     .from('work_logs')
-    .select('*')
+    .select(`
+      *,
+      project:projects(*)
+    `)
     .eq('child_id', childId)
     .order('work_date', { ascending: false })
     .order('created_at', { ascending: false });
@@ -73,7 +79,34 @@ export async function getWorkLogsByChildId(childId: number): Promise<WorkLog[]> 
     throw new Error(`Failed to fetch work logs: ${error.message}`);
   }
   
-  return (workLogs || []) as WorkLog[];
+  // Map the results to include project data
+  return (workLogs || []).map((log: any) => ({
+    ...log,
+    project: log.project || null,
+  })) as WorkLog[];
+}
+
+export async function getPendingWorkLogs(): Promise<any[]> {
+  const supabase = getSupabaseClient();
+  const { data: workLogs, error } = await supabase
+    .from('work_logs')
+    .select(`
+      *,
+      project:projects(*),
+      child:children(id, name)
+    `)
+    .eq('status', 'pending')
+    .order('created_at', { ascending: true });
+  
+  if (error) {
+    throw new Error(`Failed to fetch pending work logs: ${error.message}`);
+  }
+  
+  return (workLogs || []).map((log: any) => ({
+    ...log,
+    project: log.project || null,
+    child: log.child || null,
+  }));
 }
 
 export async function updateWorkLog(
@@ -83,6 +116,17 @@ export async function updateWorkLog(
   workDate?: string
 ): Promise<WorkLog> {
   const supabase = getSupabaseClient();
+  
+  // First check if the work log exists and its current status
+  const existingLog = await getWorkLogById(workLogId);
+  if (!existingLog) {
+    throw new Error('Work log not found');
+  }
+  
+  // Cannot edit if status is not pending
+  if (existingLog.status !== 'pending') {
+    throw new Error('Cannot edit work log that has been approved or declined');
+  }
   
   const updateData: any = {
     hours,
@@ -98,21 +142,67 @@ export async function updateWorkLog(
     .from('work_logs')
     .update(updateData)
     .eq('id', workLogId)
-    .select()
+    .select(`
+      *,
+      project:projects(*)
+    `)
     .single();
   
   if (updateError || !updatedLog) {
     throw new Error(`Failed to update work log: ${updateError?.message || 'Unknown error'}`);
   }
   
-  return updatedLog as WorkLog;
+  return {
+    ...updatedLog,
+    project: (updatedLog as any).project || null,
+  } as WorkLog;
+}
+
+export async function updateWorkLogStatus(
+  workLogId: number,
+  status: 'approved' | 'declined'
+): Promise<WorkLog> {
+  const supabase = getSupabaseClient();
+  
+  // Get the current work log to verify it's pending
+  const existingLog = await getWorkLogById(workLogId);
+  if (!existingLog) {
+    throw new Error('Work log not found');
+  }
+  
+  if (existingLog.status !== 'pending') {
+    throw new Error(`Work log is already ${existingLog.status} and cannot be changed`);
+  }
+  
+  // Update the status
+  const { data: updatedLog, error: updateError } = await supabase
+    .from('work_logs')
+    .update({ status })
+    .eq('id', workLogId)
+    .select(`
+      *,
+      project:projects(*)
+    `)
+    .single();
+  
+  if (updateError || !updatedLog) {
+    throw new Error(`Failed to update work log status: ${updateError?.message || 'Unknown error'}`);
+  }
+  
+  return {
+    ...updatedLog,
+    project: (updatedLog as any).project || null,
+  } as WorkLog;
 }
 
 export async function getWorkLogById(workLogId: number): Promise<WorkLog | null> {
   const supabase = getSupabaseClient();
   const { data: workLog, error } = await supabase
     .from('work_logs')
-    .select('*')
+    .select(`
+      *,
+      project:projects(*)
+    `)
     .eq('id', workLogId)
     .single();
   
@@ -123,6 +213,13 @@ export async function getWorkLogById(workLogId: number): Promise<WorkLog | null>
     throw new Error(`Failed to fetch work log: ${error.message}`);
   }
   
-  return workLog as WorkLog | null;
+  if (!workLog) {
+    return null;
+  }
+  
+  return {
+    ...workLog,
+    project: (workLog as any).project || null,
+  } as WorkLog;
 }
 
