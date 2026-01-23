@@ -258,6 +258,8 @@ export default function Projects() {
                   type="date"
                   value={endDate}
                   onChange={(e) => setEndDate(e.target.value)}
+                  onInput={(e) => setEndDate((e.target as HTMLInputElement).value)}
+                  onBlur={(e) => setEndDate((e.target as HTMLInputElement).value)}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                 />
               </div>
@@ -390,6 +392,8 @@ export default function Projects() {
                         type="date"
                         value={editEndDate}
                         onChange={(e) => setEditEndDate(e.target.value)}
+                        onInput={(e) => setEditEndDate((e.target as HTMLInputElement).value)}
+                        onBlur={(e) => setEditEndDate((e.target as HTMLInputElement).value)}
                         className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                       />
                     </div>
