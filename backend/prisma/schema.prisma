@@ -1,0 +1,55 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("CHORES_DATABASE_URL")
+}
+
+model HouseholdMember {
+  id            Int            @id @default(autoincrement())
+  name          String
+  canEditChores Boolean        @default(false)
+  taskTemplates TaskTemplate[] @relation("assignedTo")
+  taskInstances TaskInstance[]
+}
+
+model TaskTemplate {
+  id                 Int       @id @default(autoincrement())
+  name               String
+  category           String    // Pet Care, Kitchen, Trash, Bathroom, Laundry, Bedrooms, Shared Areas, Household Maintenance
+  assignedToId       Int
+  assignedTo         HouseholdMember @relation("assignedTo", fields: [assignedToId], references: [id])
+  frequencyType      String    // DAILY, EVERY_OTHER_DAY, WEEKLY, MONTHLY, SEMIANNUAL, CONDITIONAL_SCHEDULE
+  dayOfWeek          Int?     // 0=Sun..6=Sat for WEEKLY
+  weekOfMonth        Int?     // 1-4 for MONTHLY
+  dayOfMonth         Int?     // 1-31 for MONTHLY (alternative to weekOfMonth)
+  semiannualMonths   String?  // JSON array e.g. [1,7] for January and July
+  conditionalDayOfWeek Int?   // for CONDITIONAL_SCHEDULE
+  conditionalAfterTime String? // "18:00" for Thursday after 18:00
+  timeBlock          String   // MORNING, AFTERNOON, NIGHT, ANY
+  pointsBase         Int      @default(1)
+  active             Boolean  @default(true)
+  taskInstances      TaskInstance[]
+}
+
+model TaskInstance {
+  id                  Int      @id @default(autoincrement())
+  templateId          Int
+  template            TaskTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  assignedToId        Int
+  assignedTo          HouseholdMember @relation(fields: [assignedToId], references: [id])
+  taskDate            String   // YYYY-MM-DD
+  status              String   // PENDING, DONE, MISSED
+  doneAt              String?  // ISO datetime
+  doneWithoutReminder Boolean  @default(false)
+  notes               String?
+  complaintLogged     Boolean  @default(false)
+  isExtra             Boolean  @default(false)
+  availableAfter      String?  // "18:00" or "21:00" - time when task becomes available (America/New_York)
+
+  @@unique([templateId, taskDate])
+  @@index([taskDate])
+  @@index([assignedToId, taskDate])
+}

@@ -152,6 +152,179 @@ export const api = {
     request<{ message: string }>(`/projects/${projectId}`, {
       method: 'DELETE',
     }),
+
+  // Chores (Casa Organizada)
+  getHouseholdMembers: (): Promise<ChoreHouseholdMember[]> =>
+    request<ChoreHouseholdMember[]>('/household-members'),
+  getTasksToday: (params: { date?: string; userId?: number }): Promise<ChoreTaskInstance[]> => {
+    const q = new URLSearchParams();
+    if (params.date) q.set('date', params.date);
+    if (params.userId != null) q.set('userId', String(params.userId));
+    return request<ChoreTaskInstance[]>(`/tasks/today?${q}`);
+  },
+  completeTask: (instanceId: number, doneWithoutReminder: boolean): Promise<ChoreTaskInstance> =>
+    request<ChoreTaskInstance>(`/tasks/${instanceId}/complete`, {
+      method: 'POST',
+      body: JSON.stringify({ doneWithoutReminder }),
+    }),
+  missTask: (instanceId: number): Promise<ChoreTaskInstance> =>
+    request<ChoreTaskInstance>(`/tasks/${instanceId}/miss`, {
+      method: 'POST',
+    }),
+  getWeeklySummary: (weekStart: string): Promise<ChoreWeeklySummary> =>
+    request<ChoreWeeklySummary>(`/weekly-summary?weekStart=${weekStart}`),
+  getTemplates: (): Promise<ChoreTemplate[]> =>
+    request<ChoreTemplate[]>('/templates'),
+  updateTemplate: (id: number, data: Partial<ChoreTemplate>, editorUserId: number): Promise<ChoreTemplate> =>
+    request<ChoreTemplate>(`/templates/${id}`, {
+      method: 'PUT',
+      headers: { 'X-Editor-User-Id': String(editorUserId) },
+      body: JSON.stringify(data),
+    }),
+  createTemplate: (data: Omit<ChoreTemplate, 'id'>, editorUserId: number): Promise<ChoreTemplate> =>
+    request<ChoreTemplate>('/templates', {
+      method: 'POST',
+      headers: { 'X-Editor-User-Id': String(editorUserId) },
+      body: JSON.stringify(data),
+    }),
+  deleteTemplate: (id: number, editorUserId: number): Promise<void> =>
+    request<void>(`/templates/${id}`, {
+      method: 'DELETE',
+      headers: { 'X-Editor-User-Id': String(editorUserId) },
+    }),
+
+  // Challenges
+  getChallengesByChildId: (childId: number): Promise<Challenge[]> =>
+    request<Challenge[]>(`/challenges/child/${childId}`),
+  createChallenge: (data: CreateChallengeRequest): Promise<Challenge> =>
+    request<Challenge>('/challenges', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+  getChallenge: (id: number): Promise<ChallengeWithProgress> =>
+    request<ChallengeWithProgress>(`/challenges/${id}`),
+  updateChallenge: (id: number, data: Partial<UpdateChallengeRequest>): Promise<Challenge> =>
+    request<Challenge>(`/challenges/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    }),
+  getChallengeProgress: (id: number): Promise<ChallengeProgressEntry[]> =>
+    request<ChallengeProgressEntry[]>(`/challenges/${id}/progress`),
+  addChallengeProgress: (id: number, data: { note: string; amount?: number | null }): Promise<ChallengeProgressEntry> =>
+    request<ChallengeProgressEntry>(`/challenges/${id}/progress`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
 };
+
+export interface ChoreHouseholdMember {
+  id: number;
+  name: string;
+  canEditChores: boolean;
+}
+
+export interface ChoreTemplate {
+  id: number;
+  name: string;
+  category: string;
+  assignedToId: number;
+  assignedTo: ChoreHouseholdMember;
+  frequencyType: string;
+  dayOfWeek: number | null;
+  weekOfMonth: number | null;
+  dayOfMonth: number | null;
+  semiannualMonths: string | null;
+  conditionalDayOfWeek: number | null;
+  conditionalAfterTime: string | null;
+  timeBlock: string;
+  pointsBase: number;
+  active: boolean;
+}
+
+export interface ChoreTaskInstance {
+  id: number;
+  templateId: number;
+  template: ChoreTemplate;
+  assignedToId: number;
+  assignedTo: ChoreHouseholdMember;
+  taskDate: string;
+  status: string;
+  doneAt: string | null;
+  doneWithoutReminder: boolean;
+  notes: string | null;
+  complaintLogged: boolean;
+  isExtra: boolean;
+  availableAfter: string | null;
+}
+
+export interface ChoreWeeklySummary {
+  weekStart: string;
+  weekEnd: string;
+  byUser: Array<{
+    member: ChoreHouseholdMember;
+    totalPoints: number;
+    classification: 'green' | 'yellow' | 'red';
+    instances: ChoreTaskInstance[];
+    missed: ChoreTaskInstance[];
+  }>;
+}
+
+// Challenges (API returns snake_case)
+export type ChallengeStatus = 'active' | 'completed' | 'failed' | 'expired';
+export type ChallengeRewardType = 'bonus_points' | 'custom';
+
+export interface Challenge {
+  id: number;
+  child_id: number;
+  title: string;
+  description: string | null;
+  deadline: string;
+  reward_type: ChallengeRewardType;
+  reward_points: number | null;
+  reward_description: string | null;
+  target_number: number | null;
+  target_unit: string | null;
+  status: ChallengeStatus;
+  rewarded_at: string | null;
+  created_at: string;
+  created_by: number | null;
+}
+
+export interface ChallengeProgressEntry {
+  id: number;
+  challenge_id: number;
+  note: string;
+  amount: number | null;
+  logged_at: string;
+  created_by: number | null;
+}
+
+export interface ChallengeWithProgress extends Challenge {
+  progress: ChallengeProgressEntry[];
+}
+
+export interface CreateChallengeRequest {
+  childId: number;
+  title: string;
+  description?: string | null;
+  deadline: string;
+  rewardType: ChallengeRewardType;
+  rewardPoints?: number | null;
+  rewardDescription?: string | null;
+  targetNumber?: number | null;
+  targetUnit?: string | null;
+}
+
+export interface UpdateChallengeRequest {
+  title?: string;
+  description?: string | null;
+  deadline?: string;
+  rewardType?: ChallengeRewardType;
+  rewardPoints?: number | null;
+  rewardDescription?: string | null;
+  targetNumber?: number | null;
+  targetUnit?: string | null;
+  status?: ChallengeStatus;
+}
 
 

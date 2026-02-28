@@ -113,4 +113,40 @@ CREATE INDEX IF NOT EXISTS idx_work_logs_status ON work_logs(status);
 CREATE INDEX IF NOT EXISTS idx_work_logs_work_date ON work_logs(work_date);
 CREATE INDEX IF NOT EXISTS idx_work_logs_created_at ON work_logs(created_at);
 
+-- Challenges table (parent-set goals for a child with deadline and optional reward)
+CREATE TABLE IF NOT EXISTS challenges (
+  id BIGSERIAL PRIMARY KEY,
+  child_id BIGINT NOT NULL,
+  title TEXT NOT NULL,
+  description TEXT,
+  deadline DATE NOT NULL,
+  reward_type TEXT NOT NULL CHECK(reward_type IN ('bonus_points', 'custom')),
+  reward_points INT,
+  reward_description TEXT,
+  target_number INT,
+  target_unit TEXT,
+  status TEXT NOT NULL CHECK(status IN ('active', 'completed', 'failed', 'expired')) DEFAULT 'active',
+  rewarded_at TIMESTAMP WITH TIME ZONE,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  created_by BIGINT,
+  FOREIGN KEY (child_id) REFERENCES children(id) ON DELETE CASCADE,
+  FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
+);
+
+-- Challenge progress log (child logs progress entries)
+CREATE TABLE IF NOT EXISTS challenge_progress (
+  id BIGSERIAL PRIMARY KEY,
+  challenge_id BIGINT NOT NULL,
+  note TEXT NOT NULL,
+  amount NUMERIC,
+  logged_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  created_by BIGINT,
+  FOREIGN KEY (challenge_id) REFERENCES challenges(id) ON DELETE CASCADE,
+  FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_challenges_child_id ON challenges(child_id);
+CREATE INDEX IF NOT EXISTS idx_challenges_status ON challenges(status);
+CREATE INDEX IF NOT EXISTS idx_challenge_progress_challenge_id ON challenge_progress(challenge_id);
+
 

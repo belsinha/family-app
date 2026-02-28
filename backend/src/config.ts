@@ -16,6 +16,7 @@ export const config = {
   port: parseInt(process.env.PORT || '3001', 10),
   nodeEnv: process.env.NODE_ENV || 'development',
   databasePath: process.env.DATABASE_PATH || './data/family-app.db',
+  choresDatabaseUrl: process.env.CHORES_DATABASE_URL || 'file:./data/chores.db',
   supabase: {
     url: supabaseUrl!,
     anonKey: supabaseAnonKey!,

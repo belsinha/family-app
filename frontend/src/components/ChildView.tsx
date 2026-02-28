@@ -1,6 +1,11 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { api } from '../utils/api';
+import type {
+  Challenge,
+  ChallengeWithProgress,
+  ChallengeProgressEntry,
+} from '../utils/api';
 import type { Child, ChildBalance, Point, ChildBitcoinBalance, WorkLog, Project } from '../../../shared/src/types';
 import BitcoinPrice from './BitcoinPrice';
 import WorkLogModal from './WorkLog';
@@ -15,6 +20,10 @@ export default function ChildView() {
   const [bitcoinPrice, setBitcoinPrice] = useState<{ price_usd: number; fetched_at: string } | null>(null);
   const [workLogs, setWorkLogs] = useState<WorkLog[]>([]);
   const [activeProjects, setActiveProjects] = useState<Project[]>([]);
+  const [challenges, setChallenges] = useState<Challenge[]>([]);
+  const [selectedChallenge, setSelectedChallenge] = useState<ChallengeWithProgress | null>(null);
+  const [progressNote, setProgressNote] = useState('');
+  const [progressAmount, setProgressAmount] = useState<string>('');
   const [showWorkLog, setShowWorkLog] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -38,7 +47,7 @@ export default function ChildView() {
         setChild(childRecord);
 
         // Load balance, points, work logs, projects, and Bitcoin data
-        const [balanceData, pointsData, workLogsData, projectsData, bitcoinData, priceData] = await Promise.all([
+        const [balanceData, pointsData, workLogsData, projectsData, bitcoinData, priceData, challengesData] = await Promise.all([
           api.getChildBalance(childRecord.id),
           api.getPointsByChildIdLast7Days(childRecord.id),
           api.getWorkLogsByChildId(childRecord.id).catch((err) => {
@@ -48,6 +57,10 @@ export default function ChildView() {
           api.getActiveProjects().catch(() => []),
           api.getBitcoinBalance(childRecord.id).catch(() => null),
           api.getBitcoinPrice().catch(() => null),
+          api.getChallengesByChildId(childRecord.id).catch((err) => {
+            console.warn('Failed to load challenges:', err);
+            return [];
+          }),
         ]);
 
         setBalance(balanceData);
@@ -56,6 +69,7 @@ export default function ChildView() {
         setActiveProjects(projectsData);
         setBitcoinBalance(bitcoinData);
         setBitcoinPrice(priceData);
+        setChallenges(challengesData);
         setError(null);
       } catch (err) {
         const message = err instanceof Error ? err.message : 'Failed to load data';
@@ -236,6 +250,180 @@ export default function ChildView() {
                 View All Work Logs ({workLogs.length} total)
               </button>
             )}
+          </div>
+        )}
+      </div>
+
+      <div className="bg-white rounded-lg shadow-md p-6 mb-6">
+        <div className="mb-4">
+          <h3 className="text-xl font-bold text-gray-900 mb-2">Challenges</h3>
+          <p className="text-sm text-gray-500">Goals set for you; log progress and mark complete by the deadline.</p>
+        </div>
+        {challenges.length === 0 ? (
+          <p className="text-gray-600">No challenges yet.</p>
+        ) : (
+          <div className="space-y-3">
+            {challenges.map((c) => (
+              <div
+                key={c.id}
+                className={`p-4 rounded-lg border ${
+                  c.status === 'active'
+                    ? 'bg-amber-50 border-amber-200'
+                    : c.status === 'completed'
+                    ? 'bg-green-50 border-green-200'
+                    : c.status === 'expired'
+                    ? 'bg-gray-100 border-gray-200'
+                    : 'bg-gray-50 border-gray-200'
+                }`}
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap mb-1">
+                      <span className="font-semibold text-gray-900">{c.title}</span>
+                      <span
+                        className={`text-xs px-2 py-0.5 rounded ${
+                          c.status === 'active'
+                            ? 'bg-amber-200 text-amber-800'
+                            : c.status === 'completed'
+                            ? 'bg-green-200 text-green-800'
+                            : c.status === 'expired'
+                            ? 'bg-gray-300 text-gray-700'
+                            : 'bg-gray-200 text-gray-700'
+                        }`}
+                      >
+                        {c.status}
+                      </span>
+                    </div>
+                    <p className="text-sm text-gray-600">
+                      Due {new Date(c.deadline).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })}
+                      {c.reward_type === 'bonus_points' && c.reward_points != null && (
+                        <span className="ml-2">Reward: +{c.reward_points} pts</span>
+                      )}
+                      {c.reward_type === 'custom' && c.reward_description && (
+                        <span className="ml-2">Reward: {c.reward_description}</span>
+                      )}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      try {
+                        const full = await api.getChallenge(c.id);
+                        setSelectedChallenge(selectedChallenge?.id === c.id ? null : full);
+                        setProgressNote('');
+                        setProgressAmount('');
+                      } catch (err) {
+                        console.error('Failed to load challenge:', err);
+                      }
+                    }}
+                    className="px-3 py-1.5 bg-amber-600 text-white text-sm font-medium rounded hover:bg-amber-700 whitespace-nowrap"
+                  >
+                    {selectedChallenge?.id === c.id ? 'Hide' : 'View & log progress'}
+                  </button>
+                </div>
+                {selectedChallenge?.id === c.id && selectedChallenge && (
+                  <div className="mt-4 pt-4 border-t border-amber-200">
+                    {selectedChallenge.description && (
+                      <p className="text-sm text-gray-700 mb-2">{selectedChallenge.description}</p>
+                    )}
+                    {selectedChallenge.target_number != null && (
+                      <p className="text-sm text-gray-600 mb-2">
+                        Target: {selectedChallenge.target_number} {selectedChallenge.target_unit || ''}
+                      </p>
+                    )}
+                    <div className="mb-3">
+                      <p className="text-sm font-medium text-gray-700 mb-1">Progress log</p>
+                      {selectedChallenge.progress.length === 0 ? (
+                        <p className="text-sm text-gray-500">No entries yet.</p>
+                      ) : (
+                        <ul className="space-y-1 text-sm">
+                          {selectedChallenge.progress.map((entry: ChallengeProgressEntry) => (
+                            <li key={entry.id} className="flex gap-2 text-gray-700">
+                              <span className="text-gray-500 shrink-0">
+                                {new Date(entry.logged_at).toLocaleDateString()}:
+                              </span>
+                              {entry.amount != null && <span>(+{entry.amount})</span>}
+                              <span>{entry.note}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
+                    {(selectedChallenge.status === 'active' || selectedChallenge.status === 'expired') && (
+                      <>
+                        <div className="flex gap-2 flex-wrap items-end mb-2">
+                          <div className="flex-1 min-w-[120px]">
+                            <label className="block text-xs font-medium text-gray-600 mb-0.5">Note</label>
+                            <input
+                              type="text"
+                              value={progressNote}
+                              onChange={(e) => setProgressNote(e.target.value)}
+                              placeholder="What did you do?"
+                              className="w-full px-2 py-1.5 border border-gray-300 rounded text-sm"
+                            />
+                          </div>
+                          {selectedChallenge.target_number != null && (
+                            <div className="w-20">
+                              <label className="block text-xs font-medium text-gray-600 mb-0.5">Amount</label>
+                              <input
+                                type="number"
+                                min={0}
+                                value={progressAmount}
+                                onChange={(e) => setProgressAmount(e.target.value)}
+                                className="w-full px-2 py-1.5 border border-gray-300 rounded text-sm"
+                              />
+                            </div>
+                          )}
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              if (!progressNote.trim()) return;
+                              try {
+                                await api.addChallengeProgress(selectedChallenge.id, {
+                                  note: progressNote.trim(),
+                                  amount: progressAmount === '' ? undefined : Number(progressAmount),
+                                });
+                                const updated = await api.getChallenge(selectedChallenge.id);
+                                setSelectedChallenge(updated);
+                                setProgressNote('');
+                                setProgressAmount('');
+                              } catch (err) {
+                                console.error('Failed to add progress:', err);
+                              }
+                            }}
+                            className="px-3 py-1.5 bg-gray-700 text-white text-sm font-medium rounded hover:bg-gray-800"
+                          >
+                            Log progress
+                          </button>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            try {
+                              await api.updateChallenge(selectedChallenge.id, { status: 'completed' });
+                              const [list, bal, pts] = await Promise.all([
+                                api.getChallengesByChildId(child.id),
+                                api.getChildBalance(child.id),
+                                api.getPointsByChildIdLast7Days(child.id),
+                              ]);
+                              setChallenges(list);
+                              setSelectedChallenge(null);
+                              setBalance(bal);
+                              setPoints(pts);
+                            } catch (err) {
+                              console.error('Failed to mark complete:', err);
+                            }
+                          }}
+                          className="px-3 py-1.5 bg-green-600 text-white text-sm font-medium rounded hover:bg-green-700"
+                        >
+                          Mark complete
+                        </button>
+                      </>
+                    )}
+                  </div>
+                )}
+              </div>
+            ))}
           </div>
         )}
       </div>

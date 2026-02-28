@@ -6,9 +6,14 @@
     "dev": "tsx watch src/server.ts",
     "build": "tsc && npm run copy-schema",
     "copy-schema": "node scripts/copy-schema.js",
-    "start": "node dist/server.js"
+    "start": "node dist/server.js",
+    "db:chores:migrate": "prisma migrate deploy",
+    "db:chores:seed": "tsx prisma/seed-chores.ts",
+    "db:chores:reset": "prisma migrate reset --force",
+    "test": "node --import tsx --test src/services/scoring.test.ts src/services/taskGenerator.test.ts"
   },
   "dependencies": {
+    "@prisma/client": "^5.22.0",
     "@supabase/supabase-js": "^2.89.0",
     "bcryptjs": "^3.0.3",
     "cors": "^2.8.5",
@@ -16,6 +21,7 @@
     "express": "^4.18.2",
     "jsonwebtoken": "^9.0.3",
     "pg": "^8.11.3",
+    "prisma": "^5.22.0",
     "sql.js": "^1.10.3"
   },
   "devDependencies": {

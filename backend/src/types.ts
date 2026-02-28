@@ -181,4 +181,34 @@ export interface UpdateProjectRequest {
   status: ProjectStatus;
 }
 
+// Challenge types
+export type ChallengeStatus = 'active' | 'completed' | 'failed' | 'expired';
+export type ChallengeRewardType = 'bonus_points' | 'custom';
+
+export interface Challenge {
+  id: number;
+  child_id: number;
+  title: string;
+  description: string | null;
+  deadline: string;
+  reward_type: ChallengeRewardType;
+  reward_points: number | null;
+  reward_description: string | null;
+  target_number: number | null;
+  target_unit: string | null;
+  status: ChallengeStatus;
+  rewarded_at: string | null;
+  created_at: string;
+  created_by: number | null;
+}
+
+export interface ChallengeProgressEntry {
+  id: number;
+  challenge_id: number;
+  note: string;
+  amount: number | null;
+  logged_at: string;
+  created_by: number | null;
+}
+
 

@@ -6,6 +6,7 @@ import ChildView from './components/ChildView';
 import Projects from './components/Projects';
 import WorkLogApproval from './components/WorkLogApproval';
 import ProtectedRoute from './components/ProtectedRoute';
+import ChoresApp from './components/chores/ChoresApp';
 import { useAuth } from './contexts/AuthContext';
 
 function AppRoutes() {
@@ -14,8 +15,9 @@ function AppRoutes() {
   return (
     <Routes>
       <Route path="/login" element={isAuthenticated ? <Navigate to="/" replace /> : <Login />} />
+      <Route path="/" element={<ChoresApp />} />
       <Route
-        path="/"
+        path="/family"
         element={
           <ProtectedRoute>
             <Layout>

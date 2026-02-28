@@ -1,5 +1,10 @@
 import { useState, useEffect } from 'react';
 import { api } from '../utils/api';
+import type {
+  Challenge,
+  ChallengeWithProgress,
+  CreateChallengeRequest,
+} from '../utils/api';
 import type { Child, ChildBalance, ChildBitcoinBalance } from '../../../shared/src/types';
 import PointLog from './PointLog';
 import WorkLogModal from './WorkLog';
@@ -23,6 +28,21 @@ export default function ChildCard({ child, initialBalance, onBalanceUpdate }: Ch
   const [bitcoinBalance, setBitcoinBalance] = useState<ChildBitcoinBalance | null>(null);
   const [bitcoinPrice, setBitcoinPrice] = useState<{ price_usd: number; fetched_at: string } | null>(null);
   const [showUndoConfirm, setShowUndoConfirm] = useState(false);
+  const [challenges, setChallenges] = useState<Challenge[]>([]);
+  const [showChallenges, setShowChallenges] = useState(false);
+  const [showCreateChallenge, setShowCreateChallenge] = useState(false);
+  const [selectedChallengeDetail, setSelectedChallengeDetail] = useState<ChallengeWithProgress | null>(null);
+  const [createForm, setCreateForm] = useState<Partial<CreateChallengeRequest>>({
+    childId: undefined,
+    title: '',
+    description: '',
+    deadline: '',
+    rewardType: 'bonus_points',
+    rewardPoints: 0,
+    rewardDescription: '',
+    targetNumber: undefined,
+    targetUnit: '',
+  });
 
   // Update balance when initialBalance prop changes (e.g., when balances load from API)
   useEffect(() => {
@@ -82,6 +102,20 @@ export default function ChildCard({ child, initialBalance, onBalanceUpdate }: Ch
       updateBitcoinBalance();
     }
   }, [balance.balance, child.id, initialBalance.balance]);
+
+  // Load challenges when Challenges section is opened
+  useEffect(() => {
+    if (!showChallenges) return;
+    const load = async () => {
+      try {
+        const list = await api.getChallengesByChildId(child.id);
+        setChallenges(list);
+      } catch (err) {
+        console.warn('Failed to load challenges:', err);
+      }
+    };
+    load();
+  }, [showChallenges, child.id]);
 
   const handleAddPoints = async (type: 'bonus' | 'demerit') => {
     if (showDescriptionInput !== type) {
@@ -375,7 +409,262 @@ export default function ChildCard({ child, initialBalance, onBalanceUpdate }: Ch
         >
           Work Log
         </button>
+        <button
+          onClick={() => setShowChallenges(!showChallenges)}
+          className="w-full bg-amber-100 hover:bg-amber-200 text-amber-800 font-medium py-2 px-4 rounded-lg transition-colors"
+        >
+          {showChallenges ? 'Hide Challenges' : 'Challenges'}
+        </button>
       </div>
+
+      {showChallenges && (
+        <div className="mt-4 pt-4 border-t border-gray-200">
+          <div className="flex items-center justify-between mb-2">
+            <h4 className="font-semibold text-gray-900">Challenges for {child.name}</h4>
+            <button
+              onClick={() => {
+                setCreateForm({
+                  childId: child.id,
+                  title: '',
+                  description: '',
+                  deadline: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10),
+                  rewardType: 'bonus_points',
+                  rewardPoints: 10,
+                  rewardDescription: '',
+                  targetNumber: undefined,
+                  targetUnit: '',
+                });
+                setShowCreateChallenge(true);
+              }}
+              className="px-3 py-1.5 bg-amber-600 text-white text-sm font-medium rounded hover:bg-amber-700"
+            >
+              Create challenge
+            </button>
+          </div>
+          {challenges.length === 0 ? (
+            <p className="text-sm text-gray-500">No challenges. Create one to set a goal.</p>
+          ) : (
+            <ul className="space-y-2">
+              {challenges.map((c) => (
+                <li
+                  key={c.id}
+                  className={`p-2 rounded border text-sm ${
+                    c.status === 'active' ? 'bg-amber-50 border-amber-200' : 'bg-gray-50 border-gray-200'
+                  }`}
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="font-medium text-gray-900">{c.title}</span>
+                    <span className="text-xs text-gray-500">
+                      Due {new Date(c.deadline).toLocaleDateString()}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2 mt-1">
+                    <span className="text-xs px-1.5 py-0.5 rounded bg-gray-200 text-gray-700">
+                      {c.status}
+                    </span>
+                    {c.reward_type === 'bonus_points' && c.reward_points != null && (
+                      <span className="text-xs text-gray-600">+{c.reward_points} pts</span>
+                    )}
+                  </div>
+                  <div className="mt-1 flex gap-1">
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        try {
+                          const full = await api.getChallenge(c.id);
+                          setSelectedChallengeDetail(selectedChallengeDetail?.id === c.id ? null : full);
+                        } catch (err) {
+                          console.error('Failed to load challenge:', err);
+                        }
+                      }}
+                      className="text-xs text-amber-700 hover:underline"
+                    >
+                      {selectedChallengeDetail?.id === c.id ? 'Hide detail' : 'View detail'}
+                    </button>
+                    {(c.status === 'active' || c.status === 'expired') && (
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          try {
+                            await api.updateChallenge(c.id, { status: 'completed' });
+                            const list = await api.getChallengesByChildId(child.id);
+                            setChallenges(list);
+                            setSelectedChallengeDetail(null);
+                            onBalanceUpdate(child.id, await api.getChildBalance(child.id));
+                          } catch (err) {
+                            console.error('Failed to mark complete:', err);
+                          }
+                        }}
+                        className="text-xs text-green-700 hover:underline"
+                      >
+                        Mark complete
+                      </button>
+                    )}
+                  </div>
+                  {selectedChallengeDetail?.id === c.id && selectedChallengeDetail && (
+                    <div className="mt-2 pt-2 border-t border-gray-200 text-xs text-gray-600">
+                      {selectedChallengeDetail.description && <p>{selectedChallengeDetail.description}</p>}
+                      {selectedChallengeDetail.progress.length > 0 && (
+                        <p className="mt-1">Progress: {selectedChallengeDetail.progress.length} entries</p>
+                      )}
+                    </div>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
+
+      {showCreateChallenge && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-6 max-h-[90vh] overflow-y-auto">
+            <h3 className="text-lg font-bold text-gray-900 mb-4">Create challenge</h3>
+            <div className="space-y-3">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-0.5">Title</label>
+                <input
+                  type="text"
+                  value={createForm.title ?? ''}
+                  onChange={(e) => setCreateForm((f) => ({ ...f, title: e.target.value }))}
+                  placeholder="e.g. Read 5 books"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-0.5">Description (optional)</label>
+                <input
+                  type="text"
+                  value={createForm.description ?? ''}
+                  onChange={(e) => setCreateForm((f) => ({ ...f, description: e.target.value }))}
+                  placeholder="Details"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-0.5">Deadline</label>
+                <input
+                  type="date"
+                  value={createForm.deadline ?? ''}
+                  onChange={(e) => setCreateForm((f) => ({ ...f, deadline: e.target.value }))}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-0.5">Reward type</label>
+                <select
+                  value={createForm.rewardType ?? 'bonus_points'}
+                  onChange={(e) =>
+                    setCreateForm((f) => ({
+                      ...f,
+                      rewardType: e.target.value as 'bonus_points' | 'custom',
+                    }))
+                  }
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                >
+                  <option value="bonus_points">Bonus points</option>
+                  <option value="custom">Custom reward</option>
+                </select>
+              </div>
+              {createForm.rewardType === 'bonus_points' && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-0.5">Reward points</label>
+                  <input
+                    type="number"
+                    min={0}
+                    value={createForm.rewardPoints ?? 0}
+                    onChange={(e) =>
+                      setCreateForm((f) => ({ ...f, rewardPoints: parseInt(e.target.value, 10) || 0 }))
+                    }
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                  />
+                </div>
+              )}
+              {createForm.rewardType === 'custom' && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-0.5">Reward description</label>
+                  <input
+                    type="text"
+                    value={createForm.rewardDescription ?? ''}
+                    onChange={(e) => setCreateForm((f) => ({ ...f, rewardDescription: e.target.value }))}
+                    placeholder="e.g. Ice cream trip"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                  />
+                </div>
+              )}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-0.5">Target number (optional)</label>
+                <input
+                  type="number"
+                  min={0}
+                  value={createForm.targetNumber ?? ''}
+                  onChange={(e) =>
+                    setCreateForm((f) => ({
+                      ...f,
+                      targetNumber: e.target.value === '' ? undefined : parseInt(e.target.value, 10),
+                    }))
+                  }
+                  placeholder="e.g. 5"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-0.5">Target unit (optional)</label>
+                <input
+                  type="text"
+                  value={createForm.targetUnit ?? ''}
+                  onChange={(e) => setCreateForm((f) => ({ ...f, targetUnit: e.target.value }))}
+                  placeholder="e.g. books"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                />
+              </div>
+            </div>
+            <div className="mt-4 flex gap-2 justify-end">
+              <button
+                type="button"
+                onClick={() => setShowCreateChallenge(false)}
+                className="px-3 py-2 bg-gray-200 text-gray-700 font-medium rounded-lg hover:bg-gray-300"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={async () => {
+                  const childId = createForm.childId ?? child.id;
+                  const title = (createForm.title ?? '').trim();
+                  const deadline = createForm.deadline ?? '';
+                  const rewardType = createForm.rewardType ?? 'bonus_points';
+                  if (!title || !deadline) return;
+                  if (rewardType === 'bonus_points' && (createForm.rewardPoints == null || createForm.rewardPoints < 0))
+                    return;
+                  try {
+                    await api.createChallenge({
+                      childId,
+                      title,
+                      description: (createForm.description ?? '').trim() || undefined,
+                      deadline,
+                      rewardType,
+                      rewardPoints: rewardType === 'bonus_points' ? (createForm.rewardPoints ?? 0) : undefined,
+                      rewardDescription:
+                        rewardType === 'custom' ? (createForm.rewardDescription ?? '').trim() || undefined : undefined,
+                      targetNumber: createForm.targetNumber ?? undefined,
+                      targetUnit: (createForm.targetUnit ?? '').trim() || undefined,
+                    });
+                    const list = await api.getChallengesByChildId(child.id);
+                    setChallenges(list);
+                    setShowCreateChallenge(false);
+                  } catch (err) {
+                    console.error('Failed to create challenge:', err);
+                  }
+                }}
+                className="px-3 py-2 bg-amber-600 text-white font-medium rounded-lg hover:bg-amber-700"
+              >
+                Create
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {showPointLog && (
         <PointLog
