@@ -38,7 +38,7 @@ interface TodayViewProps {
   members: ChoreHouseholdMember[];
 }
 
-export default function TodayView({ selectedUserId, members }: TodayViewProps) {
+export default function TodayView({ selectedUserId, members: _members }: TodayViewProps) {
   const [date, setDate] = useState(() =>
     new Date().toISOString().slice(0, 10)
   );

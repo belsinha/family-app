@@ -2,10 +2,15 @@ import { getLatestPrice, savePrice } from '../db/queries/bitcoin.js';
 
 const COINGECKO_API_URL = process.env.BITCOIN_PRICE_API_URL || 'https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd';
 
+/** Only fetch from CoinGecko if cache is older than this (minutes). Reduces 429 rate limits. */
+const CACHE_TTL_MINUTES = Number(process.env.BITCOIN_PRICE_CACHE_TTL_MINUTES) || 5;
+
 export interface BitcoinPriceData {
   price_usd: number;
   fetched_at: Date;
 }
+
+let inFlightFetch: Promise<BitcoinPriceData> | null = null;
 
 interface CoinGeckoResponse {
   bitcoin?: {
@@ -69,14 +74,13 @@ export async function updatePriceCache(priceData: BitcoinPriceData): Promise<voi
 }
 
 /**
- * Get cached price or fetch new one if stale/empty
- * Returns null if fetch fails and no cache exists
+ * Get cached price or fetch new one if stale/empty.
+ * Respects CACHE_TTL_MINUTES to avoid CoinGecko rate limits (429).
+ * Deduplicates in-flight requests so concurrent callers share one API call.
+ * Returns null if fetch fails and no cache exists.
  */
 export async function getOrFetchPrice(): Promise<BitcoinPriceData | null> {
-  // First, check if we have a cached price (even if stale, it's better than nothing)
   const cached = await getCachedPrice();
-  
-  // If we have cached price, we'll use it as fallback even if fresh fetch succeeds
   let cachedPrice: BitcoinPriceData | null = null;
   if (cached) {
     cachedPrice = {
@@ -85,27 +89,38 @@ export async function getOrFetchPrice(): Promise<BitcoinPriceData | null> {
     };
     const ageMinutes = (Date.now() - cachedPrice.fetched_at.getTime()) / (1000 * 60);
     console.log(`[PRICE] Found cached Bitcoin price: $${cachedPrice.price_usd} (${ageMinutes.toFixed(1)} minutes old)`);
+    if (ageMinutes < CACHE_TTL_MINUTES) {
+      return cachedPrice;
+    }
   }
-  
-  try {
-    // Try to fetch fresh price
+
+  const doFetch = async (): Promise<BitcoinPriceData> => {
     const priceData = await fetchBitcoinPrice();
     await updatePriceCache(priceData);
+    return priceData;
+  };
+
+  try {
+    if (inFlightFetch) {
+      const priceData = await inFlightFetch;
+      console.log(`✓ [PRICE] Using in-flight Bitcoin price: $${priceData.price_usd}`);
+      return priceData;
+    }
+    inFlightFetch = doFetch();
+    const priceData = await inFlightFetch;
     console.log(`✓ [PRICE] Successfully fetched fresh Bitcoin price: $${priceData.price_usd}`);
     return priceData;
   } catch (error) {
-    // If fetch fails (e.g., rate limit), use cached price if available
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    
     if (cachedPrice) {
       const ageMinutes = (Date.now() - cachedPrice.fetched_at.getTime()) / (1000 * 60);
       console.warn(`⚠️ [PRICE] Failed to fetch Bitcoin price (${errorMessage}), using cached price from ${ageMinutes.toFixed(1)} minutes ago: $${cachedPrice.price_usd}`);
       return cachedPrice;
     }
-    
-    // No cache available
     console.error(`❌ [PRICE] No Bitcoin price available: API failed (${errorMessage}) and no cached price exists`);
     return null;
+  } finally {
+    inFlightFetch = null;
   }
 }
 
