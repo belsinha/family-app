@@ -10,6 +10,12 @@ services:
         value: production
       - key: DATABASE_PATH
         value: ./data/family-app.db
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_ANON_KEY
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
 
   - type: static
     name: family-app-frontend

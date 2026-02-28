@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { api } from '../utils/api';
-import type { Child, ChildBalance, Point, ChildBitcoinBalance, WorkLog } from '../../../shared/src/types';
+import type { Child, ChildBalance, Point, ChildBitcoinBalance, WorkLog, Project } from '../../../shared/src/types';
 import BitcoinPrice from './BitcoinPrice';
 import WorkLogModal from './WorkLog';
+import WorkTimer from './WorkTimer';
 
 export default function ChildView() {
   const { user } = useAuth();
@@ -13,6 +14,7 @@ export default function ChildView() {
   const [bitcoinBalance, setBitcoinBalance] = useState<ChildBitcoinBalance | null>(null);
   const [bitcoinPrice, setBitcoinPrice] = useState<{ price_usd: number; fetched_at: string } | null>(null);
   const [workLogs, setWorkLogs] = useState<WorkLog[]>([]);
+  const [activeProjects, setActiveProjects] = useState<Project[]>([]);
   const [showWorkLog, setShowWorkLog] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -35,14 +37,15 @@ export default function ChildView() {
 
         setChild(childRecord);
 
-        // Load balance, points, work logs, and Bitcoin data
-        const [balanceData, pointsData, workLogsData, bitcoinData, priceData] = await Promise.all([
+        // Load balance, points, work logs, projects, and Bitcoin data
+        const [balanceData, pointsData, workLogsData, projectsData, bitcoinData, priceData] = await Promise.all([
           api.getChildBalance(childRecord.id),
           api.getPointsByChildIdLast7Days(childRecord.id),
           api.getWorkLogsByChildId(childRecord.id).catch((err) => {
             console.warn('Failed to load work logs:', err);
             return [];
           }),
+          api.getActiveProjects().catch(() => []),
           api.getBitcoinBalance(childRecord.id).catch(() => null),
           api.getBitcoinPrice().catch(() => null),
         ]);
@@ -50,6 +53,7 @@ export default function ChildView() {
         setBalance(balanceData);
         setPoints(pointsData);
         setWorkLogs(workLogsData);
+        setActiveProjects(projectsData);
         setBitcoinBalance(bitcoinData);
         setBitcoinPrice(priceData);
         setError(null);
@@ -170,11 +174,21 @@ export default function ChildView() {
         )}
       </div>
 
+      <div className="mb-6">
+        <WorkTimer
+          childId={child.id}
+          projects={activeProjects}
+          onSaveLog={() => {
+            setShowWorkLog(true);
+          }}
+        />
+      </div>
+
       <div className="bg-white rounded-lg shadow-md p-6 mb-6">
         <div className="flex items-center justify-between mb-4">
           <div>
             <h3 className="text-xl font-bold text-gray-900 mb-2">Work Logs</h3>
-            <p className="text-sm text-gray-500">Track your work hours</p>
+            <p className="text-sm text-gray-500">Manual entries and timer logs</p>
           </div>
           <button
             onClick={() => setShowWorkLog(true)}

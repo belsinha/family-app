@@ -262,7 +262,14 @@ export async function initDatabase() {
       console.log('Database already contains data, skipping seed');
     }
   } catch (error) {
-    console.error('Failed to initialize database:', error);
+    const err = error instanceof Error ? error : new Error(String(error));
+    const msg = err.message || '';
+    if (msg.includes('ENOTFOUND') || msg.includes('fetch failed') || msg.includes('getaddrinfo')) {
+      console.error('Cannot reach Supabase (DNS/network). Check:');
+      console.error('  1. SUPABASE_URL in Render Environment points to your project (e.g. https://<project-ref>.supabase.co)');
+      console.error('  2. Supabase project is not paused (free tier: restore in Supabase Dashboard)');
+    }
+    console.error('Failed to initialize database:', err.message);
     throw error;
   }
 }
