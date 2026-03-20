@@ -36,7 +36,7 @@ router.get('/', authenticate, async (req: AuthRequest, res, next) => {
       });
       return res.json(list);
     }
-    const mid = await resolveHouseholdMemberIdForChildUser(req.user.userId);
+    const mid = await resolveHouseholdMemberIdForChildUser(req.user.userId, req.user.name);
     if (mid == null) {
       return res.json([]);
     }
@@ -64,7 +64,7 @@ router.get('/:id', authenticate, async (req: AuthRequest, res, next) => {
     });
     if (!t) return res.status(404).json({ error: 'Not found' });
     if (!hasFullChoresAccess(req.user.role)) {
-      const mid = await resolveHouseholdMemberIdForChildUser(req.user.userId);
+      const mid = await resolveHouseholdMemberIdForChildUser(req.user.userId, req.user.name);
       if (mid == null || t.assignedToId !== mid) {
         return res.status(403).json({ error: 'Access denied' });
       }

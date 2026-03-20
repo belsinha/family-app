@@ -32,7 +32,7 @@ router.get('/', authenticate, async (req: AuthRequest, res, next) => {
 
     let childMemberId: number | null = null;
     if (!hasFullChoresAccess(req.user.role)) {
-      childMemberId = await resolveHouseholdMemberIdForChildUser(req.user.userId);
+      childMemberId = await resolveHouseholdMemberIdForChildUser(req.user.userId, req.user.name);
       if (childMemberId == null) {
         return res.json({
           weekStart: start,

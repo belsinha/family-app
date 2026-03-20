@@ -27,7 +27,7 @@ router.get('/today', authenticate, async (req: AuthRequest, res, next) => {
         if (!Number.isNaN(id)) where.assignedToId = id;
       }
     } else {
-      const mid = await resolveHouseholdMemberIdForChildUser(req.user.userId);
+      const mid = await resolveHouseholdMemberIdForChildUser(req.user.userId, req.user.name);
       if (mid == null) {
         return res.json([]);
       }
@@ -68,7 +68,7 @@ router.post('/:instanceId/complete', authenticate, async (req: AuthRequest, res,
       return res.status(404).json({ error: 'Task not found' });
     }
     if (!hasFullChoresAccess(req.user.role)) {
-      const mid = await resolveHouseholdMemberIdForChildUser(req.user.userId);
+      const mid = await resolveHouseholdMemberIdForChildUser(req.user.userId, req.user.name);
       if (mid == null || existing.assignedToId !== mid) {
         return res.status(403).json({ error: 'Access denied' });
       }
@@ -106,7 +106,7 @@ router.post('/:instanceId/miss', authenticate, async (req: AuthRequest, res, nex
       return res.status(404).json({ error: 'Task not found' });
     }
     if (!hasFullChoresAccess(req.user.role)) {
-      const mid = await resolveHouseholdMemberIdForChildUser(req.user.userId);
+      const mid = await resolveHouseholdMemberIdForChildUser(req.user.userId, req.user.name);
       if (mid == null || existing.assignedToId !== mid) {
         return res.status(403).json({ error: 'Access denied' });
       }

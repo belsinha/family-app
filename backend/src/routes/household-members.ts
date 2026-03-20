@@ -19,7 +19,7 @@ router.get('/', authenticate, async (req: AuthRequest, res, next) => {
       });
       return res.json(members);
     }
-    const mid = await resolveHouseholdMemberIdForChildUser(req.user.userId);
+    const mid = await resolveHouseholdMemberIdForChildUser(req.user.userId, req.user.name);
     if (mid == null) {
       return res.json([]);
     }

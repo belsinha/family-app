@@ -19,7 +19,8 @@ function parseTab(value: string | null): Tab | null {
 export default function ChoresApp() {
   const { user } = useAuth();
   const [searchParams] = useSearchParams();
-  const isChild = user?.role === 'child';
+  /** Non-parents use ChildView but must not get the parent chores UI (same as API scope). */
+  const isChoresSelfOnly = user?.role !== 'parent';
   const [members, setMembers] = useState<ChoreHouseholdMember[]>([]);
   const [selectedUserId, setSelectedUserId] = useState<number | null>(null);
   const [tab, setTab] = useState<Tab>('today');
@@ -39,7 +40,7 @@ export default function ChoresApp() {
   useEffect(() => {
     if (members.length === 0) return;
 
-    if (isChild) {
+    if (isChoresSelfOnly) {
       setSelectedUserId(members[0].id);
       appliedInitialView.current = true;
       setTab('today');
@@ -62,7 +63,7 @@ export default function ChoresApp() {
       const t = parseTab(searchParams.get('tab'));
       if (t) setTab(t);
     }
-  }, [members, searchParams, isChild]);
+  }, [members, searchParams, isChoresSelfOnly]);
 
   if (loading) {
     return (
@@ -72,7 +73,7 @@ export default function ChoresApp() {
     );
   }
 
-  if (isChild && members.length === 0) {
+  if (isChoresSelfOnly && members.length === 0) {
     return (
       <div className="rounded-lg border border-amber-200 bg-amber-50 p-6 text-amber-900">
         <h2 className="text-lg font-semibold text-amber-950">Casa Organizada</h2>
@@ -90,7 +91,7 @@ export default function ChoresApp() {
     { id: 'templates', label: 'Templates' },
     { id: 'history', label: 'History' },
   ];
-  const tabs = isChild ? allTabs.filter((t) => t.id === 'today') : allTabs;
+  const tabs = isChoresSelfOnly ? allTabs.filter((t) => t.id === 'today') : allTabs;
 
   return (
     <div className="space-y-6">
@@ -98,12 +99,12 @@ export default function ChoresApp() {
         <div>
           <h2 className="text-2xl font-bold text-gray-900">Casa Organizada</h2>
           <p className="text-sm text-gray-500 mt-1">
-            {isChild
+            {isChoresSelfOnly
               ? 'Your tasks for today — only you can see this list.'
               : "Today's tasks, weekly scores, and templates for the whole household."}
           </p>
         </div>
-        {!isChild && (
+        {!isChoresSelfOnly && (
           <div className="flex flex-wrap items-center gap-2">
             <label htmlFor="chores-view-as" className="text-sm font-medium text-gray-700">
               View as
@@ -130,7 +131,7 @@ export default function ChoresApp() {
         )}
       </div>
 
-      {!isChild && (
+      {!isChoresSelfOnly && (
         <nav className="flex flex-wrap gap-2 border-b border-gray-200 pb-px">
           {tabs.map((t) => (
             <button
@@ -152,15 +153,15 @@ export default function ChoresApp() {
       <div className="rounded-lg bg-white p-6 shadow-md border border-gray-100">
         {tab === 'today' && (
           <TodayView
-            selectedUserId={isChild ? null : selectedUserId}
+            selectedUserId={isChoresSelfOnly ? null : selectedUserId}
             members={members}
           />
         )}
-        {!isChild && tab === 'week' && <WeekView />}
-        {!isChild && tab === 'templates' && (
+        {!isChoresSelfOnly && tab === 'week' && <WeekView />}
+        {!isChoresSelfOnly && tab === 'templates' && (
           <TemplatesView selectedUserId={selectedUserId} members={members} />
         )}
-        {!isChild && tab === 'history' && <HistoryView />}
+        {!isChoresSelfOnly && tab === 'history' && <HistoryView />}
       </div>
     </div>
   );
