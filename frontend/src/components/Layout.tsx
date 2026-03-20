@@ -1,6 +1,6 @@
 import { ReactNode, useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import ChangePassword from './ChangePassword';
 
 interface LayoutProps {
@@ -10,6 +10,7 @@ interface LayoutProps {
 export default function Layout({ children }: LayoutProps) {
   const { user, logout, isAuthenticated } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const [showChangePassword, setShowChangePassword] = useState(false);
 
   const handleLogout = () => {
@@ -28,15 +29,21 @@ export default function Layout({ children }: LayoutProps) {
         <header className="bg-white shadow-sm">
           <div className="max-w-7xl mx-auto px-4 py-4">
             <div className="flex justify-between items-center mb-4">
-              <h1 className="text-2xl font-bold text-gray-900">Bandeira Family App</h1>
+              <button
+                type="button"
+                onClick={() => navigate('/')}
+                className="text-2xl font-bold text-gray-900 text-left hover:text-blue-800 transition-colors"
+              >
+                Bandeira Family App
+              </button>
               <div className="flex items-center gap-4">
-                {user?.role !== 'parent' && (
+                {user?.role !== 'parent' && location.pathname === '/chores' && (
                   <button
                     type="button"
-                    onClick={() => navigate('/chores')}
+                    onClick={() => navigate('/')}
                     className="text-sm font-medium text-blue-700 hover:text-blue-900 px-3 py-2 rounded-lg hover:bg-blue-50 transition-colors"
                   >
-                    Casa Organizada
+                    Home
                   </button>
                 )}
                 <span className="text-sm text-gray-600">

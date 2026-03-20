@@ -171,7 +171,10 @@ export const api = {
       headers: { 'X-Editor-User-Id': String(editorUserId) },
       body: JSON.stringify(data),
     }),
-  createTemplate: (data: Omit<ChoreTemplate, 'id'>, editorUserId: number): Promise<ChoreTemplate> =>
+  createTemplate: (
+    data: Omit<ChoreTemplate, 'id' | 'assignedTo'>,
+    editorUserId: number
+  ): Promise<ChoreTemplate> =>
     request<ChoreTemplate>('/templates', {
       method: 'POST',
       headers: { 'X-Editor-User-Id': String(editorUserId) },

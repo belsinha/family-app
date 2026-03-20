@@ -1,7 +1,8 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { api, type ChoreHouseholdMember } from '../../utils/api';
+import { findChoreEditorMember } from './choreMemberMatch';
 import TodayView from './TodayView';
 import WeekView from './WeekView';
 import TemplatesView from './TemplatesView';
@@ -93,6 +94,11 @@ export default function ChoresApp() {
   ];
   const tabs = isChoresSelfOnly ? allTabs.filter((t) => t.id === 'today') : allTabs;
 
+  const editorMemberId = useMemo(() => {
+    if (!user?.name || members.length === 0) return null;
+    return findChoreEditorMember(members, user.name)?.id ?? null;
+  }, [user?.name, members]);
+
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-end justify-between gap-4">
@@ -159,7 +165,7 @@ export default function ChoresApp() {
         )}
         {!isChoresSelfOnly && tab === 'week' && <WeekView />}
         {!isChoresSelfOnly && tab === 'templates' && (
-          <TemplatesView selectedUserId={selectedUserId} members={members} />
+          <TemplatesView members={members} editorMemberId={editorMemberId} />
         )}
         {!isChoresSelfOnly && tab === 'history' && <HistoryView />}
       </div>
