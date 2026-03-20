@@ -89,7 +89,7 @@ The chores app uses a separate SQLite database (Prisma) and must be set up once:
 1. From the repo root: `npm install`
 2. In `backend/`, set the chores database URL (optional; default is `file:./data/chores.db`):
    - Create `backend/.env` with: `CHORES_DATABASE_URL=file:./data/chores.db`
-3. From `backend/`: run migrations and seed:
+3. From `backend/`: run migrations and seed (scripts normalize `CHORES_DATABASE_URL` so Prisma uses the same file as the API—`backend/data/chores.db`):
    ```bash
    cd backend
    npm run db:chores:migrate

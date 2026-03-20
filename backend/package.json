@@ -7,9 +7,9 @@
     "build": "tsc && npm run copy-schema",
     "copy-schema": "node scripts/copy-schema.js",
     "start": "node dist/server.js",
-    "db:chores:migrate": "prisma migrate deploy",
-    "db:chores:seed": "tsx prisma/seed-chores.ts",
-    "db:chores:reset": "prisma migrate reset --force",
+    "db:chores:migrate": "node scripts/with-chores-db-url.mjs prisma migrate deploy",
+    "db:chores:seed": "node scripts/with-chores-db-url.mjs npx tsx prisma/seed-chores.ts",
+    "db:chores:reset": "node scripts/with-chores-db-url.mjs prisma migrate reset --force",
     "test": "node --import tsx --test src/services/scoring.test.ts src/services/taskGenerator.test.ts"
   },
   "dependencies": {
