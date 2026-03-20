@@ -19,10 +19,17 @@ services:
       - key: SUPABASE_SERVICE_ROLE_KEY
         sync: false
 
-  - type: static
+  # Static site: use type web + runtime static so SPA rewrites apply (see routes below).
+  - type: web
     name: family-app-frontend
+    runtime: static
     buildCommand: cd frontend && npm install && npm run build
     staticPublishPath: frontend/dist
+    routes:
+      # Client-side routes (/chores, /login, …) must serve index.html or refresh returns 404.
+      - type: rewrite
+        source: /*
+        destination: /index.html
     envVars:
       - key: VITE_API_URL
         value: https://family-app-ksog.onrender.com/api
