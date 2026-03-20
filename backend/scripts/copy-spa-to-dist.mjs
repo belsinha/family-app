@@ -14,7 +14,10 @@ const dest = path.resolve(__dirname, '..', 'dist', 'static-frontend');
 const indexHtml = path.join(src, 'index.html');
 
 if (!fs.existsSync(indexHtml)) {
-  console.error('copy-spa-to-dist: run `npm run build` in frontend/ first; missing:', indexHtml);
+  console.error('copy-spa-to-dist: missing:', indexHtml);
+  console.error(
+    'Build the Vite app first (from repo root: npm run build, or on Render: npm install && npm run build:render — not only cd backend && npm run build).'
+  );
   process.exit(1);
 }
 

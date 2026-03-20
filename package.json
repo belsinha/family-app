@@ -13,6 +13,7 @@
     "dev:backend": "cd backend && npm run dev",
     "dev": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\"",
     "build": "cd frontend && npm run build && cd ../backend && npm install && npm run build",
+    "build:render": "cd frontend && if [ -n \"$RENDER_EXTERNAL_URL\" ]; then export VITE_API_URL=\"${RENDER_EXTERNAL_URL}/api\"; fi && npm run build && cd ../backend && npm run build",
     "start": "cd backend && npm start"
   },
   "devDependencies": {
