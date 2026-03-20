@@ -1,8 +1,6 @@
 import express from 'express';
 import cors from 'cors';
 import path from 'path';
-import fs from 'fs';
-import { fileURLToPath } from 'url';
 import { config } from './config.js';
 import { initDatabase } from './db/init-supabase.js';
 import { logger } from './middleware/logger.js';
@@ -10,13 +8,12 @@ import { errorHandler } from './middleware/errorHandler.js';
 import routes from './routes/index.js';
 import { getOrFetchPrice } from './services/bitcoin.js';
 import { getPublicApiBaseForClient } from './publicApiBase.js';
+import { resolveFrontendIndex, formatFrontendSearchList } from './resolveFrontendDist.js';
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const frontendDist = process.env.FRONTEND_DIST
-  ? path.resolve(process.env.FRONTEND_DIST)
-  : path.resolve(__dirname, '../../frontend/dist');
-const frontendIndex = path.join(frontendDist, 'index.html');
-const serveFrontend = fs.existsSync(frontendIndex);
+const frontendResolved = resolveFrontendIndex();
+const serveFrontend = frontendResolved != null;
+const frontendDist = frontendResolved?.dist ?? '';
+const frontendIndex = frontendResolved?.index ?? '';
 
 const app = express();
 
@@ -68,6 +65,10 @@ if (serveFrontend) {
     if (req.path === '/health') return next();
     // Real API is /api/... or exactly /api — not /api-config.js
     if (/^\/api(\/|$)/.test(req.path)) return next();
+    // Let missing hashed assets 404 as real 404, not index.html
+    if (req.path.startsWith('/assets/')) return next();
+    const ext = path.extname(req.path);
+    if (ext && ext !== '.html') return next();
     res.sendFile(frontendIndex, (err) => next(err));
   });
 } else {
@@ -100,7 +101,8 @@ initDatabase()
           : 'Client API base: same origin /api (set RENDER_EXTERNAL_URL or PUBLIC_API_BASE_URL if HTML is on another host)'
       );
     } else {
-      console.log('Frontend dist not found; running API only (expected in local API-only dev)');
+      console.error('Frontend dist not found; GET /chores etc. will 404. Checked paths:\n' + formatFrontendSearchList());
+      console.error(`process.cwd()=${process.cwd()}`);
     }
 
     // Fetch Bitcoin price on startup

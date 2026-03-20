@@ -14,6 +14,9 @@ services:
         value: ./data/family-app.db
       - key: CHORES_DATABASE_URL
         value: file:./data/chores.db
+      # When startCommand uses `cd backend`, cwd is backend/ — this points at repo/frontend/dist
+      - key: FRONTEND_DIST
+        value: ../frontend/dist
       - key: SUPABASE_URL
         sync: false
       - key: SUPABASE_ANON_KEY
