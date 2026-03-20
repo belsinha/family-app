@@ -3,6 +3,7 @@ import { api } from '../utils/api';
 import type { Child, ChildBalance } from '../../../shared/src/types';
 import ChildCard from './ChildCard';
 import BitcoinPrice from './BitcoinPrice';
+import ParentChoresSummary from './chores/ParentChoresSummary';
 import { useAuth } from '../contexts/AuthContext';
 
 export default function ChildrenList() {
@@ -101,9 +102,12 @@ export default function ChildrenList() {
   return (
     <div>
       {user?.role === 'parent' && (
-        <div className="mb-6">
-          <BitcoinPrice />
-        </div>
+        <>
+          <ParentChoresSummary childNames={children.map((c) => c.name)} />
+          <div className="mb-6">
+            <BitcoinPrice />
+          </div>
+        </>
       )}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {children.map((child) => {

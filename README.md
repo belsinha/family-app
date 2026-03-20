@@ -2,7 +2,7 @@
 
 A family application that includes **Casa Organizada** (Home Operations Manager) for recurring household tasks, points, and weekly scoring, plus family points management for children.
 
-After sign-in, the home page is the family app (children list for parents, child dashboard for children). **Casa Organizada** is at `/chores`: today's tasks, weekly summary, task templates, and history. Open it from the **Casa Organizada** link in the header. Only Celiane can edit task templates.
+After sign-in, the home page is the family app (children list for parents, child dashboard for children). **Casa Organizada** is at `/chores` inside the same app shell as the family pages. Parents see a **Casa Organizada** item in the main nav, a today’s-summary card on the children list, and can open a child’s tasks via **Their tasks** (sets `?member=`). Children who match a chores household member by first name see a **Casa Organizada** card on the dashboard and a header link. Optional URL: `/chores?member=<id>&tab=today|week|templates|history`. Only Celiane can edit task templates.
 
 ## Prerequisites
 

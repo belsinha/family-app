@@ -10,6 +10,7 @@ import type { Child, ChildBalance, Point, ChildBitcoinBalance, WorkLog, Project 
 import BitcoinPrice from './BitcoinPrice';
 import WorkLogModal from './WorkLog';
 import WorkTimer from './WorkTimer';
+import ChildChoresTeaser from './chores/ChildChoresTeaser';
 
 export default function ChildView() {
   const { user } = useAuth();
@@ -187,6 +188,8 @@ export default function ChildView() {
           </div>
         )}
       </div>
+
+      <ChildChoresTeaser childName={child.name} />
 
       <div className="mb-6">
         <WorkTimer

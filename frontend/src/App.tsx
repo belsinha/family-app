@@ -29,7 +29,9 @@ function AppRoutes() {
         path="/chores"
         element={
           <ProtectedRoute>
-            <ChoresApp />
+            <Layout>
+              <ChoresApp />
+            </Layout>
           </ProtectedRoute>
         }
       />
