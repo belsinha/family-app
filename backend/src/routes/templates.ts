@@ -1,5 +1,10 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { prisma } from '../db/prisma.js';
+import { authenticate, type AuthRequest } from '../middleware/auth.js';
+import {
+  hasFullChoresAccess,
+  resolveHouseholdMemberIdForChildUser,
+} from '../services/choresAccess.js';
 
 const router = Router();
 
@@ -19,9 +24,24 @@ async function requireCanEditChores(req: Request, res: Response, next: NextFunct
   next();
 }
 
-router.get('/', async (_req, res, next) => {
+router.get('/', authenticate, async (req: AuthRequest, res, next) => {
   try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Authentication required' });
+    }
+    if (hasFullChoresAccess(req.user.role)) {
+      const list = await prisma.taskTemplate.findMany({
+        include: { assignedTo: true },
+        orderBy: [{ category: 'asc' }, { name: 'asc' }],
+      });
+      return res.json(list);
+    }
+    const mid = await resolveHouseholdMemberIdForChildUser(req.user.userId);
+    if (mid == null) {
+      return res.json([]);
+    }
     const list = await prisma.taskTemplate.findMany({
+      where: { assignedToId: mid },
       include: { assignedTo: true },
       orderBy: [{ category: 'asc' }, { name: 'asc' }],
     });
@@ -31,8 +51,11 @@ router.get('/', async (_req, res, next) => {
   }
 });
 
-router.get('/:id', async (req, res, next) => {
+router.get('/:id', authenticate, async (req: AuthRequest, res, next) => {
   try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Authentication required' });
+    }
     const id = parseInt(req.params.id, 10);
     if (Number.isNaN(id)) return res.status(400).json({ error: 'Invalid ID' });
     const t = await prisma.taskTemplate.findUnique({
@@ -40,13 +63,19 @@ router.get('/:id', async (req, res, next) => {
       include: { assignedTo: true },
     });
     if (!t) return res.status(404).json({ error: 'Not found' });
+    if (!hasFullChoresAccess(req.user.role)) {
+      const mid = await resolveHouseholdMemberIdForChildUser(req.user.userId);
+      if (mid == null || t.assignedToId !== mid) {
+        return res.status(403).json({ error: 'Access denied' });
+      }
+    }
     res.json(t);
   } catch (e) {
     next(e);
   }
 });
 
-router.post('/', requireCanEditChores, async (req, res, next) => {
+router.post('/', authenticate, requireCanEditChores, async (req, res, next) => {
   try {
     const body = req.body as Record<string, unknown>;
     const assignedToId = Number(body.assignedToId);
@@ -84,7 +113,7 @@ router.post('/', requireCanEditChores, async (req, res, next) => {
   }
 });
 
-router.put('/:id', requireCanEditChores, async (req, res, next) => {
+router.put('/:id', authenticate, requireCanEditChores, async (req, res, next) => {
   try {
     const id = parseInt(req.params.id, 10);
     if (Number.isNaN(id)) return res.status(400).json({ error: 'Invalid ID' });
@@ -133,7 +162,7 @@ router.put('/:id', requireCanEditChores, async (req, res, next) => {
   }
 });
 
-router.delete('/:id', requireCanEditChores, async (req, res, next) => {
+router.delete('/:id', authenticate, requireCanEditChores, async (req, res, next) => {
   try {
     const id = parseInt(req.params.id, 10);
     if (Number.isNaN(id)) return res.status(400).json({ error: 'Invalid ID' });
