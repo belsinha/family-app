@@ -10,6 +10,8 @@ services:
         value: production
       - key: DATABASE_PATH
         value: ./data/family-app.db
+      - key: CHORES_DATABASE_URL
+        value: file:./data/chores.db
       - key: SUPABASE_URL
         sync: false
       - key: SUPABASE_ANON_KEY

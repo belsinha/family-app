@@ -15,25 +15,39 @@ try {
   /* optional */
 }
 
+/** Same rule as src/db/prisma.ts — file:/data/... is not writable on Render. */
+function remapMisconfiguredRootDataPath(absolutePath) {
+  if (process.platform === 'win32') {
+    return absolutePath;
+  }
+  const normalized = absolutePath.replace(/\\/g, '/');
+  if (normalized === '/data' || normalized.startsWith('/data/')) {
+    const underData =
+      normalized === '/data'
+        ? 'chores.db'
+        : normalized.slice('/data/'.length) || 'chores.db';
+    return path.normalize(path.join(backendRoot, 'data', underData));
+  }
+  return absolutePath;
+}
+
 function normalizeChoresDatabaseUrl() {
   let url = process.env.CHORES_DATABASE_URL || 'file:./data/chores.db';
   if (!url.startsWith('file:')) {
     return;
   }
   const trimmed = url.trim();
+  let abs;
   try {
-    const abs = path.normalize(fileURLToPath(new URL(trimmed)));
-    process.env.CHORES_DATABASE_URL =
-      'file:' + abs.split(path.sep).join('/');
-    return;
+    abs = path.normalize(fileURLToPath(new URL(trimmed)));
   } catch {
     const rest = trimmed.replace(/^file:/, '').replace(/^\/+/, '');
-    const abs = path.isAbsolute(rest)
+    abs = path.isAbsolute(rest)
       ? path.normalize(rest)
       : path.normalize(path.resolve(backendRoot, rest));
-    process.env.CHORES_DATABASE_URL =
-      'file:' + abs.split(path.sep).join('/');
   }
+  abs = remapMisconfiguredRootDataPath(abs);
+  process.env.CHORES_DATABASE_URL = 'file:' + abs.split(path.sep).join('/');
 }
 
 normalizeChoresDatabaseUrl();

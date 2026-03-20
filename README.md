@@ -191,7 +191,7 @@ DATABASE_PATH=./data/family-app.db
 CHORES_DATABASE_URL=file:./data/chores.db
 ```
 
-**Render / PaaS:** Set `CHORES_DATABASE_URL=file:./data/chores.db` (or omit it for the default). Do not use `file:/data/chores.db` — that points at the real `/data` directory on the host, which the process cannot create. SQLite files on a default web service live on ephemeral disk and are lost on redeploy unless you add a [Render Disk](https://render.com/docs/disks) or use another database.
+**Render / PaaS:** Set `CHORES_DATABASE_URL=file:./data/chores.db` (or omit it for the default). Do not use `file:/data/chores.db` — that points at the real `/data` directory on the host, which is read-only during build and not writable at runtime. The app and `with-chores-db-url.mjs` remap that mistake to `backend/data/`, but you should still fix or remove the wrong value in the Render dashboard so it does not confuse operators. SQLite on a default web service is ephemeral unless you add a [Render Disk](https://render.com/docs/disks) or use another database.
 
 The backend **build** runs `db:chores:migrate` then `db:chores:seed` so tables and default household/templates exist on each deploy (seed uses upserts; safe to repeat).
 
