@@ -1,15 +1,5 @@
 import type { Child, Point, User, AddPointsRequest, ChildBalance, ApiError, ChangePasswordRequest, ChangePasswordResponse, BitcoinConversion, ConvertBonusRequest, ConvertBonusResponse, ChildBitcoinBalance, WorkLog, AddWorkLogRequest, UpdateWorkLogRequest, Project, CreateProjectRequest, UpdateProjectRequest, ProjectStatistics } from '../../../shared/src/types';
-
-// Automatically detect API URL based on current hostname for local network access
-const getApiBaseUrl = () => {
-  if (import.meta.env.VITE_API_URL) {
-    return import.meta.env.VITE_API_URL;
-  }
-  // Use current hostname and port 3001 for backend
-  const protocol = window.location.protocol;
-  const hostname = window.location.hostname;
-  return `${protocol}//${hostname}:3001/api`;
-};
+import { getApiBaseUrl } from './getApiBaseUrl';
 
 const API_BASE_URL = getApiBaseUrl();
 

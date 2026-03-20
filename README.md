@@ -195,11 +195,14 @@ CHORES_DATABASE_URL=file:./data/chores.db
 
 The backend **build** runs `db:chores:migrate` then `db:chores:seed` so tables and default household/templates exist on each deploy (seed uses upserts; safe to repeat).
 
+**Render frontend URL:** The blueprint builds the Vite app and serves `frontend/dist` from the **same Node web service** as the API, so paths like `/login` and `/chores` work without CDN rewrite rules. Open the **backend** service URL (e.g. `https://family-app-backend-….onrender.com`), not a separate Static Site, unless that static site has a rewrite `/*` → `/index.html`. For this combined deploy, leave `VITE_API_URL` unset at build time so the browser calls `/api` on the same origin.
+
 ### Frontend
 Create a `.env` file in the `frontend/` directory (optional):
 ```
 VITE_API_URL=http://localhost:3001/api
 ```
+Omit `VITE_API_URL` for production builds that are served from the same host as the API (the app then uses `{origin}/api`). Keep it for local Vite on port 3000 or for a split static-site + API setup.
 
 ## Technology Stack
 

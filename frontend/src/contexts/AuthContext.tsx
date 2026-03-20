@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import type { User, LoginRequest, LoginResponse } from '../../../shared/src/types';
+import { getApiBaseUrl } from '../utils/getApiBaseUrl';
 
 export type LoginStatus = 'idle' | 'waking-up' | 'authenticating' | 'success' | 'error';
 
@@ -32,15 +33,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const login = async (credentials: LoginRequest, onStatusChange?: (status: LoginStatus) => void) => {
-    const getApiBaseUrl = () => {
-      if (import.meta.env.VITE_API_URL) {
-        return import.meta.env.VITE_API_URL;
-      }
-      const protocol = window.location.protocol;
-      const hostname = window.location.hostname;
-      return `${protocol}//${hostname}:3001/api`;
-    };
-
     const RETRY_INTERVAL_MS = 4000; // 4 seconds
     const MAX_WAIT_TIME_MS = 15000; // 15 seconds
     const REQUEST_TIMEOUT_MS = 10000; // 10 seconds per request

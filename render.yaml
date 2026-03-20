@@ -1,9 +1,10 @@
 services:
+  # Single web service: API + Vite SPA. Deep links (/login, /chores, …) work without CDN rewrite rules.
   - type: web
     name: family-app-backend
     runtime: node
     plan: free
-    buildCommand: npm install && cd backend && npm run build
+    buildCommand: npm install && cd frontend && npm run build && cd ../backend && npm run build
     startCommand: cd backend && npm start
     envVars:
       - key: NODE_ENV
@@ -19,18 +20,5 @@ services:
       - key: SUPABASE_SERVICE_ROLE_KEY
         sync: false
 
-  # Static site: use type web + runtime static so SPA rewrites apply (see routes below).
-  - type: web
-    name: family-app-frontend
-    runtime: static
-    buildCommand: cd frontend && npm install && npm run build
-    staticPublishPath: frontend/dist
-    routes:
-      # Client-side routes (/chores, /login, …) must serve index.html or refresh returns 404.
-      - type: rewrite
-        source: /*
-        destination: /index.html
-    envVars:
-      - key: VITE_API_URL
-        value: https://family-app-ksog.onrender.com/api
-
+  # Optional: separate static site on Render requires a dashboard rewrite /* → /index.html, or links 404.
+  # If you use the backend URL above for the app, you can delete the static site in the Render dashboard.

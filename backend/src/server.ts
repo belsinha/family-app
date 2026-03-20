@@ -1,11 +1,19 @@
 import express from 'express';
 import cors from 'cors';
+import path from 'path';
+import fs from 'fs';
+import { fileURLToPath } from 'url';
 import { config } from './config.js';
 import { initDatabase } from './db/init-supabase.js';
 import { logger } from './middleware/logger.js';
 import { errorHandler } from './middleware/errorHandler.js';
 import routes from './routes/index.js';
 import { getOrFetchPrice } from './services/bitcoin.js';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const frontendDist = path.resolve(__dirname, '../../frontend/dist');
+const frontendIndex = path.join(frontendDist, 'index.html');
+const serveFrontend = fs.existsSync(frontendIndex);
 
 const app = express();
 
@@ -17,30 +25,52 @@ app.use(cors({
 app.use(express.json());
 app.use(logger);
 
-// Root route
-app.get('/', (req, res) => {
+// Health check (before database init for quick health checks)
+app.get('/health', (req, res) => {
+  res.json({ status: 'ok' });
+});
+
+// API discovery (previously served at `/` when the API ran alone)
+app.get('/api/info', (req, res) => {
   res.json({
     message: 'Family App API',
     version: '1.0.0',
-      endpoints: {
+    endpoints: {
       health: '/health',
       api: '/api',
       auth: '/api/auth',
       users: '/api/users',
       children: '/api/children',
       points: '/api/points',
-      bitcoin: '/api/bitcoin'
-    }
+      bitcoin: '/api/bitcoin',
+    },
   });
-});
-
-// Health check (before database init for quick health checks)
-app.get('/health', (req, res) => {
-  res.json({ status: 'ok' });
 });
 
 // Routes
 app.use('/api', routes);
+
+if (serveFrontend) {
+  app.use(express.static(frontendDist));
+  app.use((req, res, next) => {
+    if (req.method !== 'GET' && req.method !== 'HEAD') return next();
+    if (req.path.startsWith('/api') || req.path === '/health') return next();
+    res.sendFile(frontendIndex, (err) => next(err));
+  });
+} else {
+  app.get('/', (req, res) => {
+    res.json({
+      message: 'Family App API',
+      version: '1.0.0',
+      note: 'Frontend dist not found next to backend; see /api/info',
+      endpoints: {
+        health: '/health',
+        apiInfo: '/api/info',
+        api: '/api',
+      },
+    });
+  });
+}
 
 // Error handling
 app.use(errorHandler);
@@ -48,6 +78,12 @@ app.use(errorHandler);
 // Initialize database and start server
 initDatabase()
   .then(async () => {
+    if (serveFrontend) {
+      console.log(`Serving SPA from ${frontendDist}`);
+    } else {
+      console.log('Frontend dist not found; running API only (expected in local API-only dev)');
+    }
+
     // Fetch Bitcoin price on startup
     try {
       const priceData = await getOrFetchPrice();
@@ -59,7 +95,7 @@ initDatabase()
     } catch (error) {
       console.warn('Failed to fetch Bitcoin price on startup:', error);
     }
-    
+
     // Set up background price fetcher (every 15 minutes)
     const fetchIntervalMs = parseInt(process.env.BITCOIN_PRICE_FETCH_INTERVAL_MS || '900000', 10);
     setInterval(async () => {
@@ -77,9 +113,9 @@ initDatabase()
         }
       }
     }, fetchIntervalMs);
-    
+
     console.log(`Bitcoin price background fetcher started (interval: ${fetchIntervalMs / 1000 / 60} minutes)`);
-    
+
     const server = app.listen(config.port, '0.0.0.0', () => {
       console.log(`Server running on port ${config.port}`);
       console.log(`Server accessible at http://0.0.0.0:${config.port}`);
@@ -100,6 +136,3 @@ initDatabase()
     console.error('Error details:', error instanceof Error ? error.stack : String(error));
     process.exit(1);
   });
-
-
-
