@@ -4,7 +4,8 @@ services:
     name: family-app-backend
     runtime: node
     plan: free
-    buildCommand: npm install && cd frontend && npm run build && cd ../backend && npm run build
+    # Bake API URL into the bundle when Render provides it (helps if the UI is ever served from another host).
+    buildCommand: npm install && cd frontend && if [ -n "$RENDER_EXTERNAL_URL" ]; then export VITE_API_URL="${RENDER_EXTERNAL_URL}/api"; fi && npm run build && cd ../backend && npm run build
     startCommand: cd backend && npm start
     envVars:
       - key: NODE_ENV

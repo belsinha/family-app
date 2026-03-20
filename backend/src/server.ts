@@ -9,6 +9,7 @@ import { logger } from './middleware/logger.js';
 import { errorHandler } from './middleware/errorHandler.js';
 import routes from './routes/index.js';
 import { getOrFetchPrice } from './services/bitcoin.js';
+import { getPublicApiBaseForClient } from './publicApiBase.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const frontendDist = process.env.FRONTEND_DIST
@@ -52,11 +53,21 @@ app.get('/api/info', (req, res) => {
 // Routes
 app.use('/api', routes);
 
+// Tells the SPA where /api lives (must be before static + SPA fallback; not under /api/)
+app.get('/api-config.js', (_req, res) => {
+  const base = getPublicApiBaseForClient();
+  res.type('application/javascript');
+  res.setHeader('Cache-Control', 'no-store');
+  res.send(`window.__FAMILY_APP_API_BASE__=${JSON.stringify(base)};`);
+});
+
 if (serveFrontend) {
   app.use(express.static(frontendDist));
   app.use((req, res, next) => {
     if (req.method !== 'GET' && req.method !== 'HEAD') return next();
-    if (req.path.startsWith('/api') || req.path === '/health') return next();
+    if (req.path === '/health') return next();
+    // Real API is /api/... or exactly /api — not /api-config.js
+    if (/^\/api(\/|$)/.test(req.path)) return next();
     res.sendFile(frontendIndex, (err) => next(err));
   });
 } else {
@@ -81,7 +92,13 @@ app.use(errorHandler);
 initDatabase()
   .then(async () => {
     if (serveFrontend) {
+      const apiHint = getPublicApiBaseForClient();
       console.log(`Serving SPA from ${frontendDist}`);
+      console.log(
+        apiHint
+          ? `Client API base (from env): ${apiHint}`
+          : 'Client API base: same origin /api (set RENDER_EXTERNAL_URL or PUBLIC_API_BASE_URL if HTML is on another host)'
+      );
     } else {
       console.log('Frontend dist not found; running API only (expected in local API-only dev)');
     }
