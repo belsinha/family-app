@@ -4,7 +4,7 @@
   "type": "module",
   "scripts": {
     "dev": "tsx watch src/server.ts",
-    "build": "tsc && npm run copy-schema",
+    "build": "npm run db:chores:migrate && npm run db:chores:seed && tsc && npm run copy-schema",
     "copy-schema": "node scripts/copy-schema.js",
     "start": "node dist/server.js",
     "db:chores:migrate": "node scripts/with-chores-db-url.mjs prisma migrate deploy",

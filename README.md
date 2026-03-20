@@ -193,6 +193,8 @@ CHORES_DATABASE_URL=file:./data/chores.db
 
 **Render / PaaS:** Set `CHORES_DATABASE_URL=file:./data/chores.db` (or omit it for the default). Do not use `file:/data/chores.db` — that points at the real `/data` directory on the host, which the process cannot create. SQLite files on a default web service live on ephemeral disk and are lost on redeploy unless you add a [Render Disk](https://render.com/docs/disks) or use another database.
 
+The backend **build** runs `db:chores:migrate` then `db:chores:seed` so tables and default household/templates exist on each deploy (seed uses upserts; safe to repeat).
+
 ### Frontend
 Create a `.env` file in the `frontend/` directory (optional):
 ```
