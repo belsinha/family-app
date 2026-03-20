@@ -11,7 +11,9 @@ import routes from './routes/index.js';
 import { getOrFetchPrice } from './services/bitcoin.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const frontendDist = path.resolve(__dirname, '../../frontend/dist');
+const frontendDist = process.env.FRONTEND_DIST
+  ? path.resolve(process.env.FRONTEND_DIST)
+  : path.resolve(__dirname, '../../frontend/dist');
 const frontendIndex = path.join(frontendDist, 'index.html');
 const serveFrontend = fs.existsSync(frontendIndex);
 

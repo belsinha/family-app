@@ -26,15 +26,24 @@ export default function ChoresApp() {
   const [selectedUserId, setSelectedUserId] = useState<number | null>(null);
   const [tab, setTab] = useState<Tab>('today');
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const appliedInitialView = useRef(false);
 
+  const memberFromUrl = searchParams.get('member');
+  const tabFromUrl = searchParams.get('tab');
+
   useEffect(() => {
+    setLoadError(null);
     api
       .getHouseholdMembers()
       .then((list) => {
         setMembers(list);
       })
-      .catch(console.error)
+      .catch((e) => {
+        const msg = e instanceof Error ? e.message : 'Failed to load household members';
+        setLoadError(msg);
+        console.error(e);
+      })
       .finally(() => setLoading(false));
   }, []);
 
@@ -46,7 +55,7 @@ export default function ChoresApp() {
       appliedInitialView.current = true;
       setTab('today');
     } else {
-      const mid = searchParams.get('member');
+      const mid = memberFromUrl;
       if (mid) {
         const id = parseInt(mid, 10);
         if (!Number.isNaN(id) && members.some((m) => m.id === id)) {
@@ -61,15 +70,32 @@ export default function ChoresApp() {
         appliedInitialView.current = true;
       }
 
-      const t = parseTab(searchParams.get('tab'));
+      const t = parseTab(tabFromUrl);
       if (t) setTab(t);
     }
-  }, [members, searchParams, isChoresSelfOnly]);
+  }, [members, memberFromUrl, tabFromUrl, isChoresSelfOnly]);
 
   if (loading) {
     return (
       <div className="text-center py-12">
         <p className="text-gray-600">Loading Casa Organizada…</p>
+      </div>
+    );
+  }
+
+  if (loadError) {
+    return (
+      <div className="rounded-lg border border-red-200 bg-red-50 p-6 text-red-900">
+        <h2 className="text-lg font-semibold text-red-950">Could not load Casa Organizada</h2>
+        <p className="mt-2 text-sm">{loadError}</p>
+        <p className="mt-3 text-sm text-red-800">
+          If you see &quot;404&quot;, the app may be calling the wrong API address. For the combined Render
+          deploy, clear <code className="rounded bg-red-100 px-1">VITE_API_URL</code> so the client uses{' '}
+          <code className="rounded bg-red-100 px-1">/api</code> on the same host. If you set{' '}
+          <code className="rounded bg-red-100 px-1">VITE_API_URL</code>, it must end with{' '}
+          <code className="rounded bg-red-100 px-1">/api</code> (e.g. <code className="rounded bg-red-100 px-1">https://your-service.onrender.com/api</code>
+          ).
+        </p>
       </div>
     );
   }
