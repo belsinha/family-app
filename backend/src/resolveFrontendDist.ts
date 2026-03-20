@@ -16,6 +16,9 @@ export function resolveFrontendIndex(): { dist: string; index: string } | null {
     candidates.push(path.isAbsolute(env) ? env : path.resolve(cwd, env));
   }
 
+  // Deploy: copy-frontend-dist.mjs puts UI here (avoids gitignored frontend/dist/ missing from slug)
+  candidates.push(path.resolve(dirname, '../static-frontend'));
+
   candidates.push(
     path.resolve(dirname, '../../frontend/dist'),
     path.resolve(cwd, '../frontend/dist'),
@@ -44,6 +47,7 @@ export function formatFrontendSearchList(): string {
     : [];
   const all = [
     ...extra,
+    path.resolve(dirname, '../static-frontend'),
     path.resolve(dirname, '../../frontend/dist'),
     path.resolve(cwd, '../frontend/dist'),
     path.resolve(cwd, 'frontend/dist'),

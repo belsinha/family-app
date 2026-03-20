@@ -4,8 +4,8 @@ services:
     name: family-app-backend
     runtime: node
     plan: free
-    # Bake API URL into the bundle when Render provides it (helps if the UI is ever served from another host).
-    buildCommand: npm install && cd frontend && if [ -n "$RENDER_EXTERNAL_URL" ]; then export VITE_API_URL="${RENDER_EXTERNAL_URL}/api"; fi && npm run build && cd ../backend && npm run build
+    # Copy SPA into backend/static-frontend (Render may omit gitignored frontend/dist from the runtime tree).
+    buildCommand: npm install && cd frontend && if [ -n "$RENDER_EXTERNAL_URL" ]; then export VITE_API_URL="${RENDER_EXTERNAL_URL}/api"; fi && npm run build && cd .. && node backend/scripts/copy-frontend-dist.mjs && cd backend && npm run build
     startCommand: cd backend && npm start
     envVars:
       - key: NODE_ENV
@@ -14,9 +14,6 @@ services:
         value: ./data/family-app.db
       - key: CHORES_DATABASE_URL
         value: file:./data/chores.db
-      # When startCommand uses `cd backend`, cwd is backend/ — this points at repo/frontend/dist
-      - key: FRONTEND_DIST
-        value: ../frontend/dist
       - key: SUPABASE_URL
         sync: false
       - key: SUPABASE_ANON_KEY

@@ -165,6 +165,10 @@ The main app may use Supabase/Postgres. The chores app uses SQLite in `backend/d
 
 Legacy/family points data (if used): houses, children, parents.
 
+### Supabase: challenges API (`GET /api/challenges/...`)
+
+If production logs show `Could not find the table 'public.challenges' in the schema cache`, the Postgres project was provisioned before that feature was added. In the **Supabase** dashboard, open **SQL Editor** and run the `challenges` and `challenge_progress` definitions (including their indexes) from `backend/src/db/schema-postgres-supabase.sql`—the block starting at `-- Challenges table` through `idx_challenge_progress_challenge_id`. All statements use `IF NOT EXISTS`, so they are safe to run once against an existing database.
+
 ## API Endpoints
 
 ### Users
@@ -195,7 +199,7 @@ CHORES_DATABASE_URL=file:./data/chores.db
 
 The backend **build** runs `db:chores:migrate` then `db:chores:seed` so tables and default household/templates exist on each deploy (seed uses upserts; safe to repeat).
 
-**Render frontend URL:** The blueprint builds the Vite app and serves `frontend/dist` from the **same Node web service** as the API, so paths like `/login` and `/chores` work without CDN rewrite rules. Open the **backend** service URL (e.g. `https://family-app-backend-….onrender.com`), not a separate Static Site, unless that static site has a rewrite `/*` → `/index.html`. For this combined deploy, leave `VITE_API_URL` unset at build time so the browser calls `/api` on the same origin.
+**Render frontend URL:** The blueprint builds the Vite app, runs `node backend/scripts/copy-frontend-dist.mjs` (copies `frontend/dist` into `backend/static-frontend/`), then builds the backend. The Node process serves the SPA from that folder so paths like `/login` and `/chores` work without CDN rewrite rules even when `frontend/dist` is gitignored. Open the **web** service URL from Render, not a separate Static Site, unless that site has a rewrite `/*` → `/index.html`. When `RENDER_EXTERNAL_URL` is set at build time, the blueprint exports `VITE_API_URL` so the client targets the correct API origin.
 
 ### Frontend
 Create a `.env` file in the `frontend/` directory (optional):
@@ -221,6 +225,10 @@ Omit `VITE_API_URL` for production builds that are served from the same host as 
 - No external state management libraries - uses React hooks only
 
 ## Troubleshooting
+
+### Render: `Frontend dist not found` in server logs
+
+The service is starting without a built SPA next to `backend/dist`. Confirm the deploy **build command** matches `render.yaml` (frontend `npm run build`, then `node backend/scripts/copy-frontend-dist.mjs`, then backend `npm run build`). Build logs should include `copy-frontend-dist: copied to .../backend/static-frontend`. If the frontend build fails, the copy step never runs and deep links return 404.
 
 ### Installation Issues
 

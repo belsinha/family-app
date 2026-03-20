@@ -71,7 +71,11 @@ coverage/
 # Vite
 frontend/dist/
 frontend/.vite/
+
 frontend/vite.config.*.timestamp-*
+
+# SPA bundle copied next to backend for production (see backend/scripts/copy-frontend-dist.mjs)
+backend/static-frontend/
 
 # Temporary files
 *.tmp
