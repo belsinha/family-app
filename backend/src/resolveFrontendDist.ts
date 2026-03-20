@@ -16,7 +16,10 @@ export function resolveFrontendIndex(): { dist: string; index: string } | null {
     candidates.push(path.isAbsolute(env) ? env : path.resolve(cwd, env));
   }
 
-  // Deploy: copy-frontend-dist.mjs puts UI here (avoids gitignored frontend/dist/ missing from slug)
+  // Production: copy-spa-to-dist.mjs (backend build) places assets next to dist/*.js
+  candidates.push(path.join(dirname, 'static-frontend'));
+
+  // Fallback: sibling folder (manual deploy layout)
   candidates.push(path.resolve(dirname, '../static-frontend'));
 
   candidates.push(
@@ -47,6 +50,7 @@ export function formatFrontendSearchList(): string {
     : [];
   const all = [
     ...extra,
+    path.join(dirname, 'static-frontend'),
     path.resolve(dirname, '../static-frontend'),
     path.resolve(dirname, '../../frontend/dist'),
     path.resolve(cwd, '../frontend/dist'),

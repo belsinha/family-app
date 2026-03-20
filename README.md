@@ -199,7 +199,7 @@ CHORES_DATABASE_URL=file:./data/chores.db
 
 The backend **build** runs `db:chores:migrate` then `db:chores:seed` so tables and default household/templates exist on each deploy (seed uses upserts; safe to repeat).
 
-**Render frontend URL:** The blueprint builds the Vite app, runs `node backend/scripts/copy-frontend-dist.mjs` (copies `frontend/dist` into `backend/static-frontend/`), then builds the backend. The Node process serves the SPA from that folder so paths like `/login` and `/chores` work without CDN rewrite rules even when `frontend/dist` is gitignored. Open the **web** service URL from Render, not a separate Static Site, unless that site has a rewrite `/*` → `/index.html`. When `RENDER_EXTERNAL_URL` is set at build time, the blueprint exports `VITE_API_URL` so the client targets the correct API origin.
+**Render frontend URL:** The blueprint builds the Vite app under `frontend/`, then runs `npm run build` in `backend/`. The backend build copies `frontend/dist` into `backend/dist/static-frontend/` (same tree as `server.js`) and serves it from there, so paths like `/login` and `/chores` work without CDN rewrite rules. Open the **web** service URL from Render, not a separate Static Site, unless that site has a rewrite `/*` → `/index.html`. When `RENDER_EXTERNAL_URL` is set at build time, the blueprint exports `VITE_API_URL` so the client targets the correct API origin.
 
 ### Frontend
 Create a `.env` file in the `frontend/` directory (optional):
@@ -228,7 +228,7 @@ Omit `VITE_API_URL` for production builds that are served from the same host as 
 
 ### Render: `Frontend dist not found` in server logs
 
-The service is starting without a built SPA next to `backend/dist`. Confirm the deploy **build command** matches `render.yaml` (frontend `npm run build`, then `node backend/scripts/copy-frontend-dist.mjs`, then backend `npm run build`). Build logs should include `copy-frontend-dist: copied to .../backend/static-frontend`. If the frontend build fails, the copy step never runs and deep links return 404.
+The service is starting without a built SPA. Confirm the deploy **build command** matches `render.yaml` (frontend `npm run build`, then `backend` `npm run build`). Backend build logs should include `copy-spa-to-dist: copied SPA to .../backend/dist/static-frontend`. If the frontend build fails or is skipped, the copy step exits with an error and deep links return 404. If the Render service **root directory** is set to `backend` only, the blueprint will not find `frontend/`—clear root directory or set a build that builds the whole repo.
 
 ### Installation Issues
 

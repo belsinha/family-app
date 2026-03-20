@@ -5,7 +5,7 @@ services:
     runtime: node
     plan: free
     # Copy SPA into backend/static-frontend (Render may omit gitignored frontend/dist from the runtime tree).
-    buildCommand: npm install && cd frontend && if [ -n "$RENDER_EXTERNAL_URL" ]; then export VITE_API_URL="${RENDER_EXTERNAL_URL}/api"; fi && npm run build && cd .. && node backend/scripts/copy-frontend-dist.mjs && cd backend && npm run build
+    buildCommand: npm install && cd frontend && if [ -n "$RENDER_EXTERNAL_URL" ]; then export VITE_API_URL="${RENDER_EXTERNAL_URL}/api"; fi && npm run build && cd ../backend && npm run build
     startCommand: cd backend && npm start
     envVars:
       - key: NODE_ENV
