@@ -19,20 +19,60 @@ function sqliteAbsolutePathFromFileUrl(url: string): string {
   }
 }
 
+/**
+ * `CHORES_DATABASE_URL=file:/data/chores.db` resolves to host `/data` (not ./data). On Render that
+ * is not writable. Remap to backend/data/... so deploys work without creating /data.
+ */
+function remapMisconfiguredRootDataPath(absolutePath: string): string {
+  if (process.platform === 'win32') {
+    return absolutePath;
+  }
+  const normalized = absolutePath.replace(/\\/g, '/');
+  if (normalized === '/data' || normalized.startsWith('/data/')) {
+    const underData =
+      normalized === '/data'
+        ? 'chores.db'
+        : normalized.slice('/data/'.length) || 'chores.db';
+    return path.normalize(path.join(backendRoot, 'data', underData));
+  }
+  return absolutePath;
+}
+
+function setChoresFileEnv(absolutePath: string): void {
+  const posixPath = absolutePath.split(path.sep).join('/');
+  process.env.CHORES_DATABASE_URL = 'file:' + posixPath;
+}
+
 function ensureChoresDatabaseUrl(): void {
   const url = process.env.CHORES_DATABASE_URL || config.choresDatabaseUrl;
   if (!url.startsWith('file:')) {
     process.env.CHORES_DATABASE_URL = url;
     return;
   }
-  const absolutePath = sqliteAbsolutePathFromFileUrl(url);
+  let absolutePath = remapMisconfiguredRootDataPath(
+    sqliteAbsolutePathFromFileUrl(url),
+  );
   const dir = path.dirname(absolutePath);
   if (!fs.existsSync(dir)) {
-    fs.mkdirSync(dir, { recursive: true });
+    try {
+      fs.mkdirSync(dir, { recursive: true });
+    } catch (err) {
+      const code = (err as NodeJS.ErrnoException).code;
+      // e.g. CHORES_DATABASE_URL=file:/data/chores.db tries to mkdir /data (root); use app dir instead
+      if (code === 'EACCES' || code === 'EROFS') {
+        absolutePath = path.join(backendRoot, 'data', 'chores.db');
+        const fallbackDir = path.dirname(absolutePath);
+        if (!fs.existsSync(fallbackDir)) {
+          fs.mkdirSync(fallbackDir, { recursive: true });
+        }
+        setChoresFileEnv(absolutePath);
+        return;
+      }
+      throw err;
+    }
   }
   // Prisma/sqlite on Windows rejects file:///... from pathToFileURL; use file:C:/... style.
-  const posixPath = absolutePath.split(path.sep).join('/');
-  process.env.CHORES_DATABASE_URL = 'file:' + posixPath;
+  setChoresFileEnv(absolutePath);
 }
 
 ensureChoresDatabaseUrl();
