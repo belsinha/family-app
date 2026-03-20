@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { api, type ChoreHouseholdMember } from '../../utils/api';
 import TodayView from './TodayView';
 import WeekView from './WeekView';
@@ -8,6 +9,7 @@ import HistoryView from './HistoryView';
 type Tab = 'today' | 'week' | 'templates' | 'history';
 
 export default function ChoresApp() {
+  const navigate = useNavigate();
   const [members, setMembers] = useState<ChoreHouseholdMember[]>([]);
   const [selectedUserId, setSelectedUserId] = useState<number | null>(null);
   const [tab, setTab] = useState<Tab>('today');
@@ -38,9 +40,18 @@ export default function ChoresApp() {
   return (
     <div className="min-h-screen bg-gray-100 p-4">
       <header className="mb-4">
-        <h1 className="text-xl font-semibold text-gray-900">
-          Casa Organizada
-        </h1>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h1 className="text-xl font-semibold text-gray-900">
+            Casa Organizada
+          </h1>
+          <button
+            type="button"
+            onClick={() => navigate('/')}
+            className="text-sm font-medium text-blue-700 hover:text-blue-900 underline"
+          >
+            Family app
+          </button>
+        </div>
         <div className="mt-2 flex flex-wrap items-center gap-4">
           <label className="text-sm font-medium text-gray-700">
             View as

@@ -30,6 +30,13 @@ export default function Layout({ children }: LayoutProps) {
             <div className="flex justify-between items-center mb-4">
               <h1 className="text-2xl font-bold text-gray-900">Bandeira Family App</h1>
               <div className="flex items-center gap-4">
+                <button
+                  type="button"
+                  onClick={() => navigate('/chores')}
+                  className="text-sm font-medium text-blue-700 hover:text-blue-900 px-3 py-2 rounded-lg hover:bg-blue-50 transition-colors"
+                >
+                  Casa Organizada
+                </button>
                 <span className="text-sm text-gray-600">
                   {user?.name} ({user?.role})
                 </span>

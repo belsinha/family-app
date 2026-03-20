@@ -2,7 +2,7 @@
 
 A family application that includes **Casa Organizada** (Home Operations Manager) for recurring household tasks, points, and weekly scoring, plus family points management for children.
 
-The home page is Casa Organizada: view today's tasks, weekly summary, task templates, and history. Only Celiane can edit task templates.
+After sign-in, the home page is the family app (children list for parents, child dashboard for children). **Casa Organizada** is at `/chores`: today's tasks, weekly summary, task templates, and history. Open it from the **Casa Organizada** link in the header. Only Celiane can edit task templates.
 
 ## Prerequisites
 

@@ -15,9 +15,8 @@ function AppRoutes() {
   return (
     <Routes>
       <Route path="/login" element={isAuthenticated ? <Navigate to="/" replace /> : <Login />} />
-      <Route path="/" element={<ChoresApp />} />
       <Route
-        path="/family"
+        path="/"
         element={
           <ProtectedRoute>
             <Layout>
@@ -26,6 +25,15 @@ function AppRoutes() {
           </ProtectedRoute>
         }
       />
+      <Route
+        path="/chores"
+        element={
+          <ProtectedRoute>
+            <ChoresApp />
+          </ProtectedRoute>
+        }
+      />
+      <Route path="/family" element={<Navigate to="/" replace />} />
       <Route
         path="/children"
         element={
