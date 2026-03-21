@@ -69,6 +69,7 @@ if (serveFrontend) {
     if (req.path.startsWith('/assets/')) return next();
     const ext = path.extname(req.path);
     if (ext && ext !== '.html') return next();
+    res.setHeader('Cache-Control', 'no-store');
     res.sendFile(frontendIndex, (err) => next(err));
   });
 } else {
