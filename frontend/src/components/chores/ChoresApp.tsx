@@ -75,6 +75,11 @@ export default function ChoresApp() {
     }
   }, [members, memberFromUrl, tabFromUrl, isChoresSelfOnly]);
 
+  const editorMemberId = useMemo(() => {
+    if (!user?.name || members.length === 0) return null;
+    return findChoreEditorMember(members, user.name)?.id ?? null;
+  }, [user?.name, members]);
+
   if (loading) {
     return (
       <div className="text-center py-12">
@@ -119,11 +124,6 @@ export default function ChoresApp() {
     { id: 'history', label: 'History' },
   ];
   const tabs = isChoresSelfOnly ? allTabs.filter((t) => t.id === 'today') : allTabs;
-
-  const editorMemberId = useMemo(() => {
-    if (!user?.name || members.length === 0) return null;
-    return findChoreEditorMember(members, user.name)?.id ?? null;
-  }, [user?.name, members]);
 
   return (
     <div className="space-y-6">
