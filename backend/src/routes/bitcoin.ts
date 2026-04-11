@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { authenticate, requireRole, type AuthRequest } from '../middleware/auth.js';
-import { getCachedPrice, getOrFetchPrice, refreshPriceCache } from '../services/bitcoin.js';
+import { getOrFetchPrice, refreshPriceCache } from '../services/bitcoin.js';
 import { createConversion, getConversionsByChildId } from '../db/queries/bitcoin.js';
 import { getChildBalance } from '../db/queries/points.js';
 import { getChildByUserId } from '../db/queries/children.js';
@@ -15,49 +15,17 @@ const SATOSHIS_PER_BTC = 100_000_000;
 
 /**
  * GET /api/bitcoin/price
- * Get current cached Bitcoin price (all authenticated users can view)
- * Automatically refreshes if price is older than 15 minutes
+ * Current Bitcoin price (same cache/TTL as balance conversion — see getOrFetchPrice).
  */
 router.get('/price', authenticate, async (req: AuthRequest, res, next) => {
   try {
-    // Try to get cached price first
-    let price = await getCachedPrice();
-    
-    // Check if price is stale (older than 15 minutes) or doesn't exist
-    let shouldRefresh = false;
-    if (!price) {
-      shouldRefresh = true;
-    } else {
-      const fetchedAt = new Date(price.fetched_at);
-      const now = new Date();
-      const minutesSinceFetch = (now.getTime() - fetchedAt.getTime()) / (1000 * 60);
-      // Refresh if price is older than 15 minutes
-      if (minutesSinceFetch > 15) {
-        shouldRefresh = true;
-      }
-    }
-    
-    // If price is stale or missing, try to fetch a fresh one
-    if (shouldRefresh) {
-      try {
-        const priceData = await getOrFetchPrice();
-        if (priceData) {
-          // Get the newly cached price
-          price = await getCachedPrice();
-        }
-      } catch (error) {
-        // If fetch fails, log it but continue with cached price if available
-        console.warn('Failed to refresh Bitcoin price in /price endpoint:', error);
-      }
-    }
-    
-    if (!price) {
+    const priceData = await getOrFetchPrice();
+    if (!priceData) {
       return res.status(404).json({ error: 'Bitcoin price not available' });
     }
-    
     res.json({
-      price_usd: Number(price.price_usd),
-      fetched_at: price.fetched_at,
+      price_usd: priceData.price_usd,
+      fetched_at: priceData.fetched_at.toISOString(),
     });
   } catch (error) {
     next(error);

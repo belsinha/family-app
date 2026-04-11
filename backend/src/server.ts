@@ -9,6 +9,7 @@ import routes from './routes/index.js';
 import { getOrFetchPrice } from './services/bitcoin.js';
 import { getPublicApiBaseForClient } from './publicApiBase.js';
 import { resolveFrontendIndex, formatFrontendSearchList } from './resolveFrontendDist.js';
+import { startPublicHealthPing } from './keepAlive.js';
 
 const frontendResolved = resolveFrontendIndex();
 const serveFrontend = frontendResolved != null;
@@ -141,6 +142,13 @@ initDatabase()
     const server = app.listen(config.port, '0.0.0.0', () => {
       console.log(`Server running on port ${config.port}`);
       console.log(`Server accessible at http://0.0.0.0:${config.port}`);
+
+      if (config.keepAlive.enabled && config.keepAlive.baseUrl) {
+        startPublicHealthPing({
+          baseUrl: config.keepAlive.baseUrl,
+          intervalMs: config.keepAlive.intervalMs,
+        });
+      }
     });
 
     // Handle server errors

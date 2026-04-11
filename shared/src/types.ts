@@ -120,6 +120,65 @@ export interface ConvertBonusResponse {
   priceTimestamp: string;
 }
 
+// On-chain wallet types
+export type PayoutType = 'onchain_settlement' | 'apple_cash_manual';
+export type BitcoinNetwork = 'mainnet' | 'testnet';
+
+export interface ChildOnchainWallet {
+  id: number;
+  child_id: number;
+  derivation_index: number;
+  receive_address: string;
+  network: BitcoinNetwork;
+  created_at: string;
+  last_chain_sync_at: string | null;
+}
+
+export interface ChildCreditPayout {
+  id: number;
+  child_id: number;
+  type: PayoutType;
+  satoshis: number;
+  usd_amount: number | null;
+  note: string | null;
+  parent_id: number | null;
+  txid: string | null;
+  created_at: string;
+  parent_name?: string | null;
+}
+
+export interface OnchainBalanceResponse {
+  childId: number;
+  address: string;
+  network: BitcoinNetwork;
+  confirmedSat: number;
+  unconfirmedSat: number;
+}
+
+export interface DepositUriResponse {
+  childId: number;
+  address: string;
+  network: BitcoinNetwork;
+  bitcoinUri: string;
+}
+
+export interface SettleCreditsRequest {
+  childId: number;
+  satoshis: number;
+}
+
+export interface SettleCreditsResponse {
+  payout: ChildCreditPayout;
+  txid: string;
+}
+
+export interface AppleCashPayoutRequest {
+  childId: number;
+  satoshis: number;
+  usdAmount?: number;
+  note?: string;
+}
+
 // Project types
 export type ProjectStatus = 'active' | 'inactive';
 export type WorkLogStatus = 'pending' | 'approved' | 'declined';
@@ -184,13 +243,15 @@ export interface AddWorkLogRequest {
   childId: number;
   projectId: number;
   hours: number;
-  description: string;
+  /** Optional; stored as empty string if omitted. */
+  description?: string;
   workDate?: string;
 }
 
 export interface UpdateWorkLogRequest {
   hours: number;
-  description: string;
+  /** Optional; stored as empty string if omitted. */
+  description?: string;
   workDate?: string;
 }
 

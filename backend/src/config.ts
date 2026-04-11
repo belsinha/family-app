@@ -12,6 +12,17 @@ if (isProduction && (!supabaseUrl || !supabaseAnonKey)) {
   process.exit(1);
 }
 
+function trimTrailingSlash(u: string | undefined): string | undefined {
+  if (!u) return undefined;
+  return u.replace(/\/$/, '');
+}
+
+const keepAliveBaseUrl =
+  trimTrailingSlash(process.env.KEEP_ALIVE_URL) ?? trimTrailingSlash(process.env.RENDER_EXTERNAL_URL) ?? null;
+const keepAliveIntervalParsed = parseInt(process.env.KEEP_ALIVE_INTERVAL_MS || '600000', 10);
+const keepAliveIntervalMs =
+  Number.isFinite(keepAliveIntervalParsed) && keepAliveIntervalParsed > 0 ? keepAliveIntervalParsed : 600_000;
+
 export const config = {
   port: parseInt(process.env.PORT || '3001', 10),
   nodeEnv: process.env.NODE_ENV || 'development',
@@ -21,6 +32,21 @@ export const config = {
     url: supabaseUrl!,
     anonKey: supabaseAnonKey!,
     serviceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY || undefined,
+  },
+  bitcoin: {
+    network: (process.env.BITCOIN_NETWORK || 'testnet') as 'mainnet' | 'testnet',
+    mnemonic: process.env.BITCOIN_MNEMONIC || undefined,
+    xprv: process.env.BITCOIN_XPRV || undefined,
+    esploraBaseUrl: process.env.ESPLORA_BASE_URL ||
+      (process.env.BITCOIN_NETWORK === 'mainnet'
+        ? 'https://blockstream.info/api'
+        : 'https://blockstream.info/testnet/api'),
+  },
+  /** Ping public /health on an interval so Render (etc.) does not spin down from idle. */
+  keepAlive: {
+    enabled: process.env.KEEP_ALIVE_ENABLED !== 'false' && isProduction && keepAliveBaseUrl != null,
+    baseUrl: keepAliveBaseUrl,
+    intervalMs: keepAliveIntervalMs,
   },
 };
 

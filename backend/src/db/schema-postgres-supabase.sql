@@ -149,4 +149,37 @@ CREATE INDEX IF NOT EXISTS idx_challenges_child_id ON challenges(child_id);
 CREATE INDEX IF NOT EXISTS idx_challenges_status ON challenges(status);
 CREATE INDEX IF NOT EXISTS idx_challenge_progress_challenge_id ON challenge_progress(challenge_id);
 
+-- On-chain Bitcoin wallets per child (custodial HD derivation)
+CREATE TABLE IF NOT EXISTS child_onchain_wallets (
+  id BIGSERIAL PRIMARY KEY,
+  child_id BIGINT NOT NULL UNIQUE,
+  derivation_index INTEGER NOT NULL UNIQUE,
+  receive_address TEXT NOT NULL UNIQUE,
+  network TEXT NOT NULL CHECK(network IN ('mainnet', 'testnet')),
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  last_chain_sync_at TIMESTAMP WITH TIME ZONE,
+  FOREIGN KEY (child_id) REFERENCES children(id) ON DELETE CASCADE
+);
+
+-- Credit payouts (on-chain settlement or manual Apple Cash)
+CREATE TABLE IF NOT EXISTS child_credit_payouts (
+  id BIGSERIAL PRIMARY KEY,
+  child_id BIGINT NOT NULL,
+  type TEXT NOT NULL CHECK(type IN ('onchain_settlement', 'apple_cash_manual')),
+  satoshis BIGINT NOT NULL CHECK(satoshis > 0),
+  usd_amount NUMERIC,
+  note TEXT,
+  parent_id BIGINT,
+  txid TEXT,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  FOREIGN KEY (child_id) REFERENCES children(id) ON DELETE CASCADE,
+  FOREIGN KEY (parent_id) REFERENCES users(id) ON DELETE SET NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_child_onchain_wallets_child_id ON child_onchain_wallets(child_id);
+CREATE INDEX IF NOT EXISTS idx_child_credit_payouts_child_id ON child_credit_payouts(child_id);
+CREATE INDEX IF NOT EXISTS idx_child_credit_payouts_parent_id ON child_credit_payouts(parent_id);
+CREATE INDEX IF NOT EXISTS idx_child_credit_payouts_type ON child_credit_payouts(type);
+CREATE INDEX IF NOT EXISTS idx_child_credit_payouts_created_at ON child_credit_payouts(created_at);
+
 

@@ -1,7 +1,13 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { api } from '../utils/api';
 import { useAuth } from '../contexts/AuthContext';
-import type { WorkLog, AddWorkLogRequest, UpdateWorkLogRequest, Project } from '../../../shared/src/types';
+import type {
+  WorkLog,
+  AddWorkLogRequest,
+  UpdateWorkLogRequest,
+  Project,
+  WorkLogStatus,
+} from '../../../shared/src/types';
 
 interface WorkLogProps {
   childId: number;
@@ -32,6 +38,34 @@ export default function WorkLog({ childId, childName, onClose, onCreate }: WorkL
   const [editHours, setEditHours] = useState<string>('');
   const [editDescription, setEditDescription] = useState<string>('');
   const [editWorkDate, setEditWorkDate] = useState<string>('');
+
+  const [filterStatus, setFilterStatus] = useState<'all' | WorkLogStatus>('all');
+  const [filterProjectId, setFilterProjectId] = useState<string>('all');
+  const [filterDateFrom, setFilterDateFrom] = useState<string>('');
+  const [filterDateTo, setFilterDateTo] = useState<string>('');
+
+  const projectOptions = useMemo(() => {
+    const map = new Map<number, string>();
+    for (const log of workLogs) {
+      if (log.project?.id != null && log.project.name) {
+        map.set(log.project.id, log.project.name);
+      }
+    }
+    return Array.from(map.entries())
+      .sort((a, b) => a[1].localeCompare(b[1]))
+      .map(([id, name]) => ({ id, name }));
+  }, [workLogs]);
+
+  const filteredWorkLogs = useMemo(() => {
+    return workLogs.filter((log) => {
+      if (filterStatus !== 'all' && log.status !== filterStatus) return false;
+      if (filterProjectId !== 'all' && String(log.project_id) !== filterProjectId) return false;
+      const d = log.work_date;
+      if (filterDateFrom && d < filterDateFrom) return false;
+      if (filterDateTo && d > filterDateTo) return false;
+      return true;
+    });
+  }, [workLogs, filterStatus, filterProjectId, filterDateFrom, filterDateTo]);
 
   useEffect(() => {
     loadWorkLogs();
@@ -81,11 +115,6 @@ export default function WorkLog({ childId, childName, onClose, onCreate }: WorkL
       return;
     }
 
-    if (!description.trim()) {
-      setFormError('Description cannot be empty');
-      return;
-    }
-
     setIsSubmitting(true);
     try {
       // Ensure date is in YYYY-MM-DD format
@@ -112,7 +141,7 @@ export default function WorkLog({ childId, childName, onClose, onCreate }: WorkL
         childId,
         projectId: parseInt(projectId, 10),
         hours: hoursNum,
-        description: description.trim(),
+        ...(description.trim() ? { description: description.trim() } : {}),
         workDate: dateToSend,
       };
       
@@ -176,11 +205,6 @@ export default function WorkLog({ childId, childName, onClose, onCreate }: WorkL
       return;
     }
 
-    if (!editDescription.trim()) {
-      setFormError('Description cannot be empty');
-      return;
-    }
-
     setIsSubmitting(true);
     try {
       const data: UpdateWorkLogRequest = {
@@ -220,9 +244,9 @@ export default function WorkLog({ childId, childName, onClose, onCreate }: WorkL
   };
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] flex flex-col">
-        <div className="flex items-center justify-between p-6 border-b border-gray-200">
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 print:static print:inset-auto print:bg-white print:p-2 print:block">
+      <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] flex flex-col print:shadow-none print:max-w-none print:max-h-none print:overflow-visible">
+        <div className="flex items-center justify-between p-6 border-b border-gray-200 print:hidden">
           <h2 className="text-2xl font-bold text-gray-900">
             Work Log - {childName}
           </h2>
@@ -247,10 +271,22 @@ export default function WorkLog({ childId, childName, onClose, onCreate }: WorkL
           </button>
         </div>
 
+        <div className="hidden print:block print:mb-4 print:border-b print:pb-2">
+          <h1 className="text-xl font-bold text-gray-900">Work logs — {childName}</h1>
+          <p className="text-sm text-gray-600 mt-1">
+            {filterStatus !== 'all' && `Status: ${filterStatus}. `}
+            {filterProjectId !== 'all' &&
+              `Project: ${projectOptions.find((p) => String(p.id) === filterProjectId)?.name ?? filterProjectId}. `}
+            {filterDateFrom && `From ${filterDateFrom}. `}
+            {filterDateTo && `To ${filterDateTo}. `}
+            {!filterDateFrom && !filterDateTo && filterStatus === 'all' && filterProjectId === 'all' && 'All entries.'}
+          </p>
+        </div>
+
         <div className="flex-1 overflow-y-auto p-6">
           {/* Create new work log button */}
           {!isCreating && (
-            <div className="mb-6">
+            <div className="mb-6 print:hidden">
               <button
                 onClick={() => setIsCreating(true)}
                 className="w-full px-4 py-3 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors"
@@ -262,7 +298,7 @@ export default function WorkLog({ childId, childName, onClose, onCreate }: WorkL
 
           {/* Create form */}
           {isCreating && (
-            <div className="mb-6 p-4 bg-gray-50 rounded-lg border border-gray-200">
+            <div className="mb-6 p-4 bg-gray-50 rounded-lg border border-gray-200 print:hidden">
               <h3 className="text-lg font-semibold text-gray-900 mb-4">New Work Log Entry</h3>
               <form onSubmit={handleSubmit} className="space-y-4">
                 <div>
@@ -305,7 +341,7 @@ export default function WorkLog({ childId, childName, onClose, onCreate }: WorkL
 
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Description *
+                    Description (optional)
                   </label>
                   <textarea
                     value={description}
@@ -313,7 +349,6 @@ export default function WorkLog({ childId, childName, onClose, onCreate }: WorkL
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                     placeholder="Short description of the work performed"
                     rows={3}
-                    required
                   />
                 </div>
 
@@ -378,8 +413,70 @@ export default function WorkLog({ childId, childName, onClose, onCreate }: WorkL
               <p className="text-gray-600">No work logs recorded.</p>
             </div>
           ) : (
+            <div>
+              <div className="mb-4 flex flex-wrap items-end gap-3 print:hidden">
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-0.5">Status</label>
+                  <select
+                    value={filterStatus}
+                    onChange={(e) => setFilterStatus(e.target.value as 'all' | WorkLogStatus)}
+                    className="px-2 py-1.5 border border-gray-300 rounded-lg text-sm"
+                  >
+                    <option value="all">All</option>
+                    <option value="pending">Pending</option>
+                    <option value="approved">Approved</option>
+                    <option value="declined">Declined</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-0.5">Project</label>
+                  <select
+                    value={filterProjectId}
+                    onChange={(e) => setFilterProjectId(e.target.value)}
+                    className="px-2 py-1.5 border border-gray-300 rounded-lg text-sm min-w-[8rem]"
+                  >
+                    <option value="all">All projects</option>
+                    {projectOptions.map((p) => (
+                      <option key={p.id} value={String(p.id)}>
+                        {p.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-0.5">From date</label>
+                  <input
+                    type="date"
+                    value={filterDateFrom}
+                    onChange={(e) => setFilterDateFrom(e.target.value)}
+                    className="px-2 py-1.5 border border-gray-300 rounded-lg text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-0.5">To date</label>
+                  <input
+                    type="date"
+                    value={filterDateTo}
+                    onChange={(e) => setFilterDateTo(e.target.value)}
+                    className="px-2 py-1.5 border border-gray-300 rounded-lg text-sm"
+                  />
+                </div>
+                <button
+                  type="button"
+                  onClick={() => window.print()}
+                  className="px-3 py-1.5 bg-gray-800 text-white text-sm font-medium rounded-lg hover:bg-gray-900"
+                >
+                  Print
+                </button>
+              </div>
+
+              {filteredWorkLogs.length === 0 ? (
+                <div className="text-center py-8 text-gray-600">
+                  {workLogs.length === 0 ? 'No work logs recorded.' : 'No work logs match the current filters.'}
+                </div>
+              ) : (
             <div className="space-y-3">
-              {workLogs.map((log) => (
+              {filteredWorkLogs.map((log) => (
                 <div
                   key={log.id}
                   className="p-4 rounded-lg border bg-blue-50 border-blue-200"
@@ -405,7 +502,7 @@ export default function WorkLog({ childId, childName, onClose, onCreate }: WorkL
 
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">
-                          Description *
+                          Description (optional)
                         </label>
                         <textarea
                           value={editDescription}
@@ -413,7 +510,6 @@ export default function WorkLog({ childId, childName, onClose, onCreate }: WorkL
                           className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                           placeholder="Short description of the work performed"
                           rows={3}
-                          required
                         />
                       </div>
 
@@ -485,7 +581,13 @@ export default function WorkLog({ childId, childName, onClose, onCreate }: WorkL
                               })}
                             </span>
                           </div>
-                          <p className="text-sm text-gray-700 mb-2">{log.description}</p>
+                          <p className="text-sm text-gray-700 mb-2">
+                            {log.description?.trim() ? (
+                              log.description
+                            ) : (
+                              <span className="text-gray-400 italic">No description</span>
+                            )}
+                          </p>
                           <p className="text-xs text-gray-500">
                             Logged on {new Date(log.created_at).toLocaleString()}
                           </p>
@@ -503,6 +605,8 @@ export default function WorkLog({ childId, childName, onClose, onCreate }: WorkL
                   )}
                 </div>
               ))}
+            </div>
+              )}
             </div>
           )}
         </div>

@@ -8,6 +8,7 @@ import type {
 } from '../utils/api';
 import type { Child, ChildBalance, Point, ChildBitcoinBalance, WorkLog, Project } from '../../../shared/src/types';
 import BitcoinPrice from './BitcoinPrice';
+import BitcoinWallet from './BitcoinWallet';
 import WorkLogModal from './WorkLog';
 import WorkTimer from './WorkTimer';
 import ChildChoresTeaser from './chores/ChildChoresTeaser';
@@ -18,7 +19,6 @@ export default function ChildView() {
   const [balance, setBalance] = useState<ChildBalance | null>(null);
   const [points, setPoints] = useState<Point[]>([]);
   const [bitcoinBalance, setBitcoinBalance] = useState<ChildBitcoinBalance | null>(null);
-  const [bitcoinPrice, setBitcoinPrice] = useState<{ price_usd: number; fetched_at: string } | null>(null);
   const [workLogs, setWorkLogs] = useState<WorkLog[]>([]);
   const [activeProjects, setActiveProjects] = useState<Project[]>([]);
   const [challenges, setChallenges] = useState<Challenge[]>([]);
@@ -48,7 +48,7 @@ export default function ChildView() {
         setChild(childRecord);
 
         // Load balance, points, work logs, projects, and Bitcoin data
-        const [balanceData, pointsData, workLogsData, projectsData, bitcoinData, priceData, challengesData] = await Promise.all([
+        const [balanceData, pointsData, workLogsData, projectsData, bitcoinData, challengesData] = await Promise.all([
           api.getChildBalance(childRecord.id),
           api.getPointsByChildIdLast7Days(childRecord.id),
           api.getWorkLogsByChildId(childRecord.id).catch((err) => {
@@ -57,7 +57,6 @@ export default function ChildView() {
           }),
           api.getActiveProjects().catch(() => []),
           api.getBitcoinBalance(childRecord.id).catch(() => null),
-          api.getBitcoinPrice().catch(() => null),
           api.getChallengesByChildId(childRecord.id).catch((err) => {
             console.warn('Failed to load challenges:', err);
             return [];
@@ -69,7 +68,6 @@ export default function ChildView() {
         setWorkLogs(workLogsData);
         setActiveProjects(projectsData);
         setBitcoinBalance(bitcoinData);
-        setBitcoinPrice(priceData);
         setChallenges(challengesData);
         setError(null);
       } catch (err) {
@@ -83,24 +81,21 @@ export default function ChildView() {
     loadData();
   }, [user]);
 
-  // Refresh Bitcoin balance every 30 seconds to update USD value
+  // Refresh Bitcoin balance on the same schedule as parent child cards (uses price inside balance response)
   useEffect(() => {
     if (!child) return;
 
     const updateBitcoinBalance = async () => {
       try {
-        const [balanceData, priceData] = await Promise.all([
-          api.getBitcoinBalance(child.id),
-          api.getBitcoinPrice(),
-        ]);
+        const balanceData = await api.getBitcoinBalance(child.id);
         setBitcoinBalance(balanceData);
-        setBitcoinPrice(priceData);
-      } catch (err) {
+      } catch {
         // Silently fail
       }
     };
 
-    const interval = setInterval(updateBitcoinBalance, 30000);
+    void updateBitcoinBalance();
+    const interval = setInterval(updateBitcoinBalance, 30_000);
     return () => clearInterval(interval);
   }, [child?.id]);
 
@@ -176,17 +171,18 @@ export default function ChildView() {
               <div className="text-sm text-gray-500">
                 {bitcoinBalance.totalBtc.toFixed(8)} BTC ({bitcoinBalance.totalSatoshis.toLocaleString('en-US')} satoshis)
               </div>
-              {bitcoinPrice && (
-                <div className="text-xs text-gray-400 mt-1">
-                  @ ${bitcoinPrice.price_usd.toLocaleString('en-US', { 
-                    minimumFractionDigits: 2, 
-                    maximumFractionDigits: 2 
-                  })}/BTC
-                </div>
-              )}
+              <div className="text-xs text-gray-400 mt-1">
+                @ ${bitcoinBalance.priceUsd.toLocaleString('en-US', {
+                  minimumFractionDigits: 2,
+                  maximumFractionDigits: 2,
+                })}
+                /BTC
+              </div>
             </div>
           </div>
         )}
+
+        <BitcoinWallet childId={child.id} childName={child.name} />
       </div>
 
       <ChildChoresTeaser childName={child.name} />
@@ -237,7 +233,9 @@ export default function ChildView() {
                         })}
                       </span>
                     </div>
-                    <p className="text-sm text-gray-700 mb-2">{log.description}</p>
+                    <p className="text-sm text-gray-700 mb-2">
+                      {log.description?.trim() ? log.description : <span className="text-gray-400 italic">No description</span>}
+                    </p>
                     <p className="text-xs text-gray-500">
                       Logged on {new Date(log.created_at).toLocaleString()}
                     </p>

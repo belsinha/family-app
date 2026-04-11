@@ -11,6 +11,7 @@ import tasksRoutes from './tasks.js';
 import templatesRoutes from './templates.js';
 import weeklySummaryRoutes from './weekly-summary.js';
 import challengesRoutes from './challenges.js';
+import onchainRoutes from './onchain.js';
 
 const router = Router();
 
@@ -19,6 +20,7 @@ router.use('/users', usersRoutes);
 router.use('/children', childrenRoutes);
 router.use('/points', pointsRoutes);
 router.use('/bitcoin', bitcoinRoutes);
+router.use('/bitcoin', onchainRoutes);
 router.use('/work-logs', workLogsRoutes);
 router.use('/projects', projectsRoutes);
 router.use('/household-members', householdMembersRoutes);

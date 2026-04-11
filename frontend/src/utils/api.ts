@@ -1,4 +1,4 @@
-import type { Child, Point, User, AddPointsRequest, ChildBalance, ApiError, ChangePasswordRequest, ChangePasswordResponse, BitcoinConversion, ConvertBonusRequest, ConvertBonusResponse, ChildBitcoinBalance, WorkLog, AddWorkLogRequest, UpdateWorkLogRequest, Project, CreateProjectRequest, UpdateProjectRequest, ProjectStatistics } from '../../../shared/src/types';
+import type { Child, Point, User, AddPointsRequest, ChildBalance, ApiError, ChangePasswordRequest, ChangePasswordResponse, BitcoinConversion, ConvertBonusRequest, ConvertBonusResponse, ChildBitcoinBalance, WorkLog, AddWorkLogRequest, UpdateWorkLogRequest, Project, CreateProjectRequest, UpdateProjectRequest, ProjectStatistics, OnchainBalanceResponse, DepositUriResponse, ChildCreditPayout, SettleCreditsRequest, SettleCreditsResponse, AppleCashPayoutRequest } from '../../../shared/src/types';
 import { getApiBaseUrl } from './getApiBaseUrl';
 
 const API_BASE_URL = getApiBaseUrl();
@@ -97,6 +97,28 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(data),
     }),
+
+  // On-chain Bitcoin Wallets
+  getOnchainWallet: (childId: number): Promise<OnchainBalanceResponse> =>
+    request<OnchainBalanceResponse>(`/bitcoin/onchain-wallet/${childId}`),
+  getDepositUri: (childId: number, amountSat?: number): Promise<DepositUriResponse> => {
+    const q = amountSat ? `?amountSat=${amountSat}` : '';
+    return request<DepositUriResponse>(`/bitcoin/onchain-deposit-uri/${childId}${q}`);
+  },
+  settleCreditsOnchain: (data: SettleCreditsRequest): Promise<SettleCreditsResponse> =>
+    request<SettleCreditsResponse>('/bitcoin/onchain/settle-credits', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+  payoutAppleCash: (data: AppleCashPayoutRequest): Promise<ChildCreditPayout> =>
+    request<ChildCreditPayout>('/bitcoin/payout/apple-cash', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+  getPayouts: (childId: number): Promise<ChildCreditPayout[]> =>
+    request<ChildCreditPayout[]>(`/bitcoin/payouts/${childId}`),
+  getAvailableCredits: (childId: number): Promise<{ childId: number; notionalSat: number; withdrawnSat: number; availableSat: number }> =>
+    request<{ childId: number; notionalSat: number; withdrawnSat: number; availableSat: number }>(`/bitcoin/available-credits/${childId}`),
 
   // Work Logs
   addWorkLog: (data: AddWorkLogRequest): Promise<WorkLog> =>

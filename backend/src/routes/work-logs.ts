@@ -25,8 +25,8 @@ router.post('/', authenticate, async (req: AuthRequest, res, next) => {
   try {
     const { childId, projectId, hours, description, workDate } = req.body;
     
-    if (!childId || !projectId || hours === undefined || !description) {
-      return res.status(400).json({ error: 'Missing required fields: childId, projectId, hours, description' });
+    if (!childId || !projectId || hours === undefined) {
+      return res.status(400).json({ error: 'Missing required fields: childId, projectId, hours' });
     }
     
     // Validate hours is positive
@@ -34,10 +34,12 @@ router.post('/', authenticate, async (req: AuthRequest, res, next) => {
       return res.status(400).json({ error: 'Hours must be a positive number' });
     }
     
-    // Validate description is not empty
-    if (typeof description !== 'string' || description.trim().length === 0) {
-      return res.status(400).json({ error: 'Description cannot be empty' });
-    }
+    const descriptionText =
+      description === undefined || description === null
+        ? ''
+        : typeof description === 'string'
+          ? description.trim()
+          : '';
     
     // Verify project exists and is active
     const project = await getProjectById(projectId);
@@ -67,7 +69,7 @@ router.post('/', authenticate, async (req: AuthRequest, res, next) => {
       }
     }
     
-    const workLog = await addWorkLog(childId, projectId, hours, description, workDate);
+    const workLog = await addWorkLog(childId, projectId, hours, descriptionText, workDate);
     res.status(201).json(workLog);
   } catch (error) {
     console.error('Error creating work log:', error);
@@ -113,8 +115,8 @@ router.put('/:workLogId', authenticate, requireRole('parent'), async (req: AuthR
       return res.status(400).json({ error: 'Invalid work log ID' });
     }
     
-    if (hours === undefined || !description) {
-      return res.status(400).json({ error: 'Missing required fields: hours, description' });
+    if (hours === undefined) {
+      return res.status(400).json({ error: 'Missing required fields: hours' });
     }
     
     // Validate hours is positive
@@ -122,10 +124,12 @@ router.put('/:workLogId', authenticate, requireRole('parent'), async (req: AuthR
       return res.status(400).json({ error: 'Hours must be a positive number' });
     }
     
-    // Validate description is not empty
-    if (typeof description !== 'string' || description.trim().length === 0) {
-      return res.status(400).json({ error: 'Description cannot be empty' });
-    }
+    const descriptionText =
+      description === undefined || description === null
+        ? ''
+        : typeof description === 'string'
+          ? description.trim()
+          : '';
     
     // Verify work log exists and can be edited
     const existingLog = await getWorkLogById(workLogId);
@@ -137,7 +141,7 @@ router.put('/:workLogId', authenticate, requireRole('parent'), async (req: AuthR
       return res.status(400).json({ error: 'Cannot edit work log that has been approved or declined' });
     }
     
-    const updatedLog = await updateWorkLog(workLogId, hours, description, workDate);
+    const updatedLog = await updateWorkLog(workLogId, hours, descriptionText, workDate);
     res.json(updatedLog);
   } catch (error) {
     next(error);

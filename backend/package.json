@@ -13,9 +13,13 @@
     "test": "node --import tsx --test src/services/scoring.test.ts src/services/taskGenerator.test.ts"
   },
   "dependencies": {
+    "@bitcoinerlab/secp256k1": "^1.2.0",
     "@prisma/client": "^5.22.0",
     "@supabase/supabase-js": "^2.89.0",
     "bcryptjs": "^3.0.3",
+    "bip32": "^5.0.1",
+    "bip39": "^3.1.0",
+    "bitcoinjs-lib": "^7.0.1",
     "cors": "^2.8.5",
     "dotenv": "^16.3.1",
     "express": "^4.18.2",

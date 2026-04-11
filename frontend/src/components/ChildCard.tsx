@@ -8,6 +8,7 @@ import type {
 import type { Child, ChildBalance, ChildBitcoinBalance } from '../../../shared/src/types';
 import PointLog from './PointLog';
 import WorkLogModal from './WorkLog';
+import BitcoinWallet from './BitcoinWallet';
 
 interface ChildCardProps {
   child: Child;
@@ -26,7 +27,6 @@ export default function ChildCard({ child, initialBalance, onBalanceUpdate }: Ch
   const [showPointLog, setShowPointLog] = useState(false);
   const [showWorkLog, setShowWorkLog] = useState(false);
   const [bitcoinBalance, setBitcoinBalance] = useState<ChildBitcoinBalance | null>(null);
-  const [bitcoinPrice, setBitcoinPrice] = useState<{ price_usd: number; fetched_at: string } | null>(null);
   const [showUndoConfirm, setShowUndoConfirm] = useState(false);
   const [challenges, setChallenges] = useState<Challenge[]>([]);
   const [showChallenges, setShowChallenges] = useState(false);
@@ -43,6 +43,8 @@ export default function ChildCard({ child, initialBalance, onBalanceUpdate }: Ch
     targetNumber: undefined,
     targetUnit: '',
   });
+  const [createChallengeError, setCreateChallengeError] = useState<string | null>(null);
+  const [isCreatingChallenge, setIsCreatingChallenge] = useState(false);
 
   // Update balance when initialBalance prop changes (e.g., when balances load from API)
   useEffect(() => {
@@ -64,26 +66,19 @@ export default function ChildCard({ child, initialBalance, onBalanceUpdate }: Ch
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [child.id, balance.balance]);
 
-  // Load Bitcoin balance and price
+  // Load Bitcoin balance (USD value and rate come from the same response as /balance)
   useEffect(() => {
     const loadBitcoinData = async () => {
       try {
-        const [balanceData, priceData] = await Promise.all([
-          api.getBitcoinBalance(child.id),
-          api.getBitcoinPrice(),
-        ]);
+        const balanceData = await api.getBitcoinBalance(child.id);
         setBitcoinBalance(balanceData);
-        setBitcoinPrice(priceData);
       } catch (err) {
-        // Silently fail - Bitcoin balance is optional
         console.warn('Failed to load Bitcoin balance:', err);
       }
     };
 
-    loadBitcoinData();
-
-    // Refresh every 30 seconds to update USD value with current price
-    const interval = setInterval(loadBitcoinData, 30000);
+    void loadBitcoinData();
+    const interval = setInterval(loadBitcoinData, 30_000);
     return () => clearInterval(interval);
   }, [child.id]);
 
@@ -273,19 +268,29 @@ export default function ChildCard({ child, initialBalance, onBalanceUpdate }: Ch
             <p className="text-xs text-gray-500 mt-1">
               {bitcoinBalance.totalBtc.toFixed(8)} BTC ({bitcoinBalance.totalSatoshis.toLocaleString('en-US')} satoshis)
             </p>
-            {bitcoinPrice && (
-              <p className="text-xs text-gray-400 mt-1">
-                @ ${bitcoinPrice.price_usd.toLocaleString('en-US', { 
-                  minimumFractionDigits: 2, 
-                  maximumFractionDigits: 2 
-                })}/BTC
-              </p>
-            )}
+            <p className="text-xs text-gray-400 mt-1">
+              @ ${bitcoinBalance.priceUsd.toLocaleString('en-US', {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2,
+              })}
+              /BTC
+            </p>
           </div>
         </div>
       )}
 
-      <div className="space-y-3">
+      <BitcoinWallet
+        childId={child.id}
+        childName={child.name}
+        onPayoutComplete={async () => {
+          try {
+            const btcData = await api.getBitcoinBalance(child.id);
+            setBitcoinBalance(btcData);
+          } catch { /* ignore */ }
+        }}
+      />
+
+      <div className="space-y-3 mt-4">
         {showDescriptionInput === 'bonus' && (
           <div className="space-y-2">
             <input
@@ -423,6 +428,7 @@ export default function ChildCard({ child, initialBalance, onBalanceUpdate }: Ch
             <h4 className="font-semibold text-gray-900">Challenges for {child.name}</h4>
             <button
               onClick={() => {
+                setCreateChallengeError(null);
                 setCreateForm({
                   childId: child.id,
                   title: '',
@@ -619,47 +625,80 @@ export default function ChildCard({ child, initialBalance, onBalanceUpdate }: Ch
                 />
               </div>
             </div>
+            {createChallengeError && (
+              <div className="mt-3 p-3 bg-red-50 border border-red-200 rounded-lg">
+                <p className="text-sm text-red-800">{createChallengeError}</p>
+              </div>
+            )}
             <div className="mt-4 flex gap-2 justify-end">
               <button
                 type="button"
-                onClick={() => setShowCreateChallenge(false)}
+                onClick={() => {
+                  setShowCreateChallenge(false);
+                  setCreateChallengeError(null);
+                }}
                 className="px-3 py-2 bg-gray-200 text-gray-700 font-medium rounded-lg hover:bg-gray-300"
               >
                 Cancel
               </button>
               <button
                 type="button"
+                disabled={isCreatingChallenge}
                 onClick={async () => {
+                  setCreateChallengeError(null);
                   const childId = createForm.childId ?? child.id;
                   const title = (createForm.title ?? '').trim();
-                  const deadline = createForm.deadline ?? '';
+                  const deadline = (createForm.deadline ?? '').trim();
                   const rewardType = createForm.rewardType ?? 'bonus_points';
-                  if (!title || !deadline) return;
-                  if (rewardType === 'bonus_points' && (createForm.rewardPoints == null || createForm.rewardPoints < 0))
+                  const rewardPointsNum =
+                    typeof createForm.rewardPoints === 'number' && !Number.isNaN(createForm.rewardPoints)
+                      ? createForm.rewardPoints
+                      : 0;
+
+                  if (!title) {
+                    setCreateChallengeError('Please enter a title.');
                     return;
+                  }
+                  if (!deadline) {
+                    setCreateChallengeError('Please choose a deadline date.');
+                    return;
+                  }
+                  if (rewardType === 'bonus_points' && rewardPointsNum < 0) {
+                    setCreateChallengeError('Reward points cannot be negative.');
+                    return;
+                  }
+
+                  setIsCreatingChallenge(true);
                   try {
-                    await api.createChallenge({
+                    const payload: CreateChallengeRequest = {
                       childId,
                       title,
                       description: (createForm.description ?? '').trim() || undefined,
                       deadline,
                       rewardType,
-                      rewardPoints: rewardType === 'bonus_points' ? (createForm.rewardPoints ?? 0) : undefined,
+                      rewardPoints: rewardType === 'bonus_points' ? rewardPointsNum : undefined,
                       rewardDescription:
-                        rewardType === 'custom' ? (createForm.rewardDescription ?? '').trim() || undefined : undefined,
+                        rewardType === 'custom'
+                          ? (createForm.rewardDescription ?? '').trim() || undefined
+                          : undefined,
                       targetNumber: createForm.targetNumber ?? undefined,
                       targetUnit: (createForm.targetUnit ?? '').trim() || undefined,
-                    });
+                    };
+                    await api.createChallenge(payload);
                     const list = await api.getChallengesByChildId(child.id);
                     setChallenges(list);
                     setShowCreateChallenge(false);
                   } catch (err) {
+                    const message = err instanceof Error ? err.message : 'Failed to create challenge.';
+                    setCreateChallengeError(message);
                     console.error('Failed to create challenge:', err);
+                  } finally {
+                    setIsCreatingChallenge(false);
                   }
                 }}
-                className="px-3 py-2 bg-amber-600 text-white font-medium rounded-lg hover:bg-amber-700"
+                className="px-3 py-2 bg-amber-600 text-white font-medium rounded-lg hover:bg-amber-700 disabled:bg-gray-400 disabled:cursor-not-allowed"
               >
-                Create
+                {isCreatingChallenge ? 'Creating…' : 'Create'}
               </button>
             </div>
           </div>
