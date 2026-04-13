@@ -17,6 +17,15 @@ function trimTrailingSlash(u: string | undefined): string | undefined {
   return u.replace(/\/$/, '');
 }
 
+/** Esplora base URL must be absolute (https://...); env is often pasted without a scheme. */
+function normalizeEsploraBaseUrl(url: string): string {
+  let u = url.trim().replace(/\/+$/, '');
+  if (!/^https?:\/\//i.test(u)) {
+    u = `https://${u}`;
+  }
+  return u;
+}
+
 const keepAliveBaseUrl =
   trimTrailingSlash(process.env.KEEP_ALIVE_URL) ?? trimTrailingSlash(process.env.RENDER_EXTERNAL_URL) ?? null;
 const keepAliveIntervalParsed = parseInt(process.env.KEEP_ALIVE_INTERVAL_MS || '600000', 10);
@@ -37,10 +46,12 @@ export const config = {
     network: (process.env.BITCOIN_NETWORK || 'testnet') as 'mainnet' | 'testnet',
     mnemonic: process.env.BITCOIN_MNEMONIC || undefined,
     xprv: process.env.BITCOIN_XPRV || undefined,
-    esploraBaseUrl: process.env.ESPLORA_BASE_URL ||
-      (process.env.BITCOIN_NETWORK === 'mainnet'
-        ? 'https://blockstream.info/api'
-        : 'https://blockstream.info/testnet/api'),
+    esploraBaseUrl: normalizeEsploraBaseUrl(
+      process.env.ESPLORA_BASE_URL ||
+        (process.env.BITCOIN_NETWORK === 'mainnet'
+          ? 'https://blockstream.info/api'
+          : 'https://blockstream.info/testnet/api'),
+    ),
   },
   /** Ping public /health on an interval so Render (etc.) does not spin down from idle. */
   keepAlive: {
