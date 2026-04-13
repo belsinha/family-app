@@ -22,5 +22,7 @@ services:
       - key: SUPABASE_SERVICE_ROLE_KEY
         sync: false
 
-  # Optional: separate static site on Render requires a dashboard rewrite /* → /index.html, or links 404.
-  # If you use the backend URL above for the app, you can delete the static site in the Render dashboard.
+  # Optional: separate static site on Render requires /* → /index.html rewrite, and build with
+  # VITE_API_URL=https://<your-backend>.onrender.com (no /api suffix; the app adds /api).
+  # frontend/public/api-config.js avoids 404/MIME errors; without VITE_API_URL, API calls hit the wrong host.
+  # If you use the backend URL above for the app only, you can delete the static site in the Render dashboard.
