@@ -207,11 +207,11 @@ export default function ChildView() {
             onClick={() => setShowWorkLog(true)}
             className="px-4 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors"
           >
-            + Add Work Log
+            Work Log
           </button>
         </div>
         {workLogs.length === 0 ? (
-          <p className="text-gray-600">No work logs recorded. Click "Add Work Log" to get started.</p>
+          <p className="text-gray-600">No work logs recorded. Open Work Log to add an entry.</p>
         ) : (
           <div className="space-y-3">
             {workLogs.slice(0, 5).map((log) => (

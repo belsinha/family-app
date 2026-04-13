@@ -266,9 +266,6 @@ export default function WorkLog({ childId, childName, onClose, onCreate }: WorkL
   }, [filterStatus, filterProjectId, filterDateFrom, filterDateTo, projectOptions]);
 
   const printFilteredWorkLogs = () => {
-    const w = window.open('', '_blank', 'noopener,noreferrer');
-    if (!w) return;
-
     const title = `Work logs — ${childName}`;
     const generated = new Date().toLocaleString();
     const summaryBlock = filterSummaryLines.map((l) => `<p>${escapeHtml(l)}</p>`).join('');
@@ -330,17 +327,44 @@ export default function WorkLog({ childId, childName, onClose, onCreate }: WorkL
 </body>
 </html>`;
 
-    w.document.write(docHtml);
-    w.document.close();
-    w.focus();
-    w.addEventListener('afterprint', () => {
+    const blob = new Blob([docHtml], { type: 'text/html;charset=utf-8' });
+    const objectUrl = URL.createObjectURL(blob);
+    const w = window.open(objectUrl, '_blank');
+    if (!w) {
+      URL.revokeObjectURL(objectUrl);
+      return;
+    }
+
+    const cleanup = () => {
+      URL.revokeObjectURL(objectUrl);
       try {
         w.close();
       } catch {
         /* ignore */
       }
-    });
-    setTimeout(() => w.print(), 0);
+    };
+
+    const triggerPrint = () => {
+      try {
+        w.focus();
+        w.addEventListener('afterprint', cleanup, { once: true });
+        setTimeout(() => {
+          try {
+            w.print();
+          } catch {
+            cleanup();
+          }
+        }, 100);
+      } catch {
+        cleanup();
+      }
+    };
+
+    if (w.document.readyState === 'complete') {
+      triggerPrint();
+    } else {
+      w.addEventListener('load', triggerPrint, { once: true });
+    }
   };
 
   return (
@@ -379,7 +403,7 @@ export default function WorkLog({ childId, childName, onClose, onCreate }: WorkL
                 onClick={() => setIsCreating(true)}
                 className="w-full px-4 py-3 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors"
               >
-                + Add Work Log
+                Work Log
               </button>
             </div>
           )}
