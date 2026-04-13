@@ -16,6 +16,14 @@ interface WorkLogProps {
   onCreate?: () => void;
 }
 
+function escapeHtml(text: string): string {
+  return text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
 export default function WorkLog({ childId, childName, onClose, onCreate }: WorkLogProps) {
   const { user } = useAuth();
   const isParent = user?.role === 'parent';
@@ -243,10 +251,102 @@ export default function WorkLog({ childId, childName, onClose, onCreate }: WorkL
     }
   };
 
+  const filterSummaryLines = useMemo(() => {
+    const lines: string[] = [];
+    if (filterStatus !== 'all') lines.push(`Status: ${filterStatus}`);
+    if (filterProjectId !== 'all') {
+      const name =
+        projectOptions.find((p) => String(p.id) === filterProjectId)?.name ?? filterProjectId;
+      lines.push(`Project: ${name}`);
+    }
+    if (filterDateFrom) lines.push(`From date: ${filterDateFrom}`);
+    if (filterDateTo) lines.push(`To date: ${filterDateTo}`);
+    if (lines.length === 0) lines.push('Filters: all entries');
+    return lines;
+  }, [filterStatus, filterProjectId, filterDateFrom, filterDateTo, projectOptions]);
+
+  const printFilteredWorkLogs = () => {
+    const w = window.open('', '_blank', 'noopener,noreferrer');
+    if (!w) return;
+
+    const title = `Work logs — ${childName}`;
+    const generated = new Date().toLocaleString();
+    const summaryBlock = filterSummaryLines.map((l) => `<p>${escapeHtml(l)}</p>`).join('');
+
+    const rowHtml =
+      filteredWorkLogs.length === 0
+        ? '<tr><td colspan="6" class="empty">No work logs in this list.</td></tr>'
+        : filteredWorkLogs
+            .map((log) => {
+              const projectName = log.project?.name ?? '—';
+              const desc = log.description?.trim() ? escapeHtml(log.description.trim()) : '—';
+              return `<tr>
+  <td>${escapeHtml(log.work_date)}</td>
+  <td>${escapeHtml(projectName)}</td>
+  <td class="num">${escapeHtml(String(Number(log.hours)))}</td>
+  <td>${escapeHtml(log.status)}</td>
+  <td>${desc}</td>
+  <td>${escapeHtml(new Date(log.created_at).toLocaleString())}</td>
+</tr>`;
+            })
+            .join('');
+
+    const docHtml = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <title>${escapeHtml(title)}</title>
+  <style>
+    body { font-family: system-ui, Segoe UI, sans-serif; margin: 1rem; color: #111; font-size: 12pt; }
+    h1 { font-size: 1.25rem; margin: 0 0 0.25rem 0; }
+    .meta { font-size: 0.85rem; color: #444; margin-bottom: 1rem; }
+    .filters { margin-bottom: 1rem; padding: 0.5rem 0; border-bottom: 1px solid #ccc; }
+    .filters p { margin: 0.15rem 0; font-size: 0.9rem; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { border: 1px solid #999; padding: 0.35rem 0.5rem; text-align: left; vertical-align: top; }
+    th { background: #f0f0f0; font-weight: 600; }
+    td.num { text-align: right; white-space: nowrap; }
+    td.empty { text-align: center; color: #666; font-style: italic; }
+    @media print { body { margin: 0.5in; } }
+  </style>
+</head>
+<body>
+  <h1>${escapeHtml(title)}</h1>
+  <p class="meta">Printed ${escapeHtml(generated)}</p>
+  <div class="filters">${summaryBlock}</div>
+  <table>
+    <thead>
+      <tr>
+        <th>Work date</th>
+        <th>Project</th>
+        <th>Hours</th>
+        <th>Status</th>
+        <th>Description</th>
+        <th>Logged</th>
+      </tr>
+    </thead>
+    <tbody>${rowHtml}</tbody>
+  </table>
+</body>
+</html>`;
+
+    w.document.write(docHtml);
+    w.document.close();
+    w.focus();
+    w.addEventListener('afterprint', () => {
+      try {
+        w.close();
+      } catch {
+        /* ignore */
+      }
+    });
+    setTimeout(() => w.print(), 0);
+  };
+
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 print:static print:inset-auto print:bg-white print:p-2 print:block">
-      <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] flex flex-col print:shadow-none print:max-w-none print:max-h-none print:overflow-visible">
-        <div className="flex items-center justify-between p-6 border-b border-gray-200 print:hidden">
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] flex flex-col">
+        <div className="flex items-center justify-between p-6 border-b border-gray-200">
           <h2 className="text-2xl font-bold text-gray-900">
             Work Log - {childName}
           </h2>
@@ -271,22 +371,10 @@ export default function WorkLog({ childId, childName, onClose, onCreate }: WorkL
           </button>
         </div>
 
-        <div className="hidden print:block print:mb-4 print:border-b print:pb-2">
-          <h1 className="text-xl font-bold text-gray-900">Work logs — {childName}</h1>
-          <p className="text-sm text-gray-600 mt-1">
-            {filterStatus !== 'all' && `Status: ${filterStatus}. `}
-            {filterProjectId !== 'all' &&
-              `Project: ${projectOptions.find((p) => String(p.id) === filterProjectId)?.name ?? filterProjectId}. `}
-            {filterDateFrom && `From ${filterDateFrom}. `}
-            {filterDateTo && `To ${filterDateTo}. `}
-            {!filterDateFrom && !filterDateTo && filterStatus === 'all' && filterProjectId === 'all' && 'All entries.'}
-          </p>
-        </div>
-
         <div className="flex-1 overflow-y-auto p-6">
           {/* Create new work log button */}
           {!isCreating && (
-            <div className="mb-6 print:hidden">
+            <div className="mb-6">
               <button
                 onClick={() => setIsCreating(true)}
                 className="w-full px-4 py-3 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors"
@@ -298,7 +386,7 @@ export default function WorkLog({ childId, childName, onClose, onCreate }: WorkL
 
           {/* Create form */}
           {isCreating && (
-            <div className="mb-6 p-4 bg-gray-50 rounded-lg border border-gray-200 print:hidden">
+            <div className="mb-6 p-4 bg-gray-50 rounded-lg border border-gray-200">
               <h3 className="text-lg font-semibold text-gray-900 mb-4">New Work Log Entry</h3>
               <form onSubmit={handleSubmit} className="space-y-4">
                 <div>
@@ -414,7 +502,7 @@ export default function WorkLog({ childId, childName, onClose, onCreate }: WorkL
             </div>
           ) : (
             <div>
-              <div className="mb-4 flex flex-wrap items-end gap-3 print:hidden">
+              <div className="mb-4 flex flex-wrap items-end gap-3">
                 <div>
                   <label className="block text-xs font-medium text-gray-600 mb-0.5">Status</label>
                   <select
@@ -463,10 +551,10 @@ export default function WorkLog({ childId, childName, onClose, onCreate }: WorkL
                 </div>
                 <button
                   type="button"
-                  onClick={() => window.print()}
+                  onClick={printFilteredWorkLogs}
                   className="px-3 py-1.5 bg-gray-800 text-white text-sm font-medium rounded-lg hover:bg-gray-900"
                 >
-                  Print
+                  Print list
                 </button>
               </div>
 
