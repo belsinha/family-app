@@ -1,12 +1,7 @@
 import { Router } from 'express';
 import { authenticate, requireRole, type AuthRequest } from '../middleware/auth.js';
 import { getChildByUserId } from '../db/queries/children.js';
-import {
-  getWalletByChildId,
-  getNextDerivationIndex,
-  createWallet,
-  updateSyncTimestamp,
-} from '../db/queries/onchainWallets.js';
+import { getOrCreateWalletForChild, updateSyncTimestamp } from '../db/queries/onchainWallets.js';
 import {
   createPayout,
   getPayoutsByChildId,
@@ -35,22 +30,12 @@ const router = Router();
 const SATOSHIS_PER_BONUS_POINT = 2_500;
 const DUST_LIMIT = 546;
 
-/**
- * Ensure a wallet row exists for a child, creating one (with HD derivation) if needed.
- */
-async function ensureWallet(childId: number) {
-  let wallet = await getWalletByChildId(childId);
-  if (wallet) return wallet;
-
-  const index = await getNextDerivationIndex();
-  const address = deriveChildAddress(index);
-  wallet = await createWallet({
+function ensureWallet(childId: number) {
+  return getOrCreateWalletForChild({
     childId,
-    derivationIndex: index,
-    receiveAddress: address,
     network: getConfiguredNetwork(),
+    deriveAddress: deriveChildAddress,
   });
-  return wallet;
 }
 
 // ─── Access guard: parent sees any child; child sees only self ───────────
