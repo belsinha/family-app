@@ -1,8 +1,4 @@
-import { createRequire } from 'node:module';
-
-const require = createRequire(import.meta.url);
-// pdf-parse ships as CommonJS
-const pdfParse = require('pdf-parse') as (data: Buffer) => Promise<{ text: string }>;
+import { PDFParse } from 'pdf-parse';
 
 const FREQUENCY_TYPES = [
   'DAILY',
@@ -85,8 +81,13 @@ function normalizeTimeBlock(v: unknown): string {
 }
 
 export async function extractPdfText(buffer: Buffer): Promise<string> {
-  const { text } = await pdfParse(buffer);
-  return (text ?? '').trim();
+  const parser = new PDFParse({ data: buffer });
+  try {
+    const result = await parser.getText();
+    return (result.text ?? '').trim();
+  } finally {
+    await parser.destroy();
+  }
 }
 
 async function openAiChatJson(messages: unknown[]): Promise<Record<string, unknown>> {
