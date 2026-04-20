@@ -1,4 +1,8 @@
-import { PDFParse } from 'pdf-parse';
+import { createRequire } from 'node:module';
+
+/** pdf-parse 1.x default export (callable). Pinned to 1.1.1 — npm 2.x renamed the API and breaks `require()` as a function. */
+const require = createRequire(import.meta.url);
+const pdfParse = require('pdf-parse') as (data: Buffer) => Promise<{ text: string }>;
 
 const FREQUENCY_TYPES = [
   'DAILY',
@@ -81,13 +85,8 @@ function normalizeTimeBlock(v: unknown): string {
 }
 
 export async function extractPdfText(buffer: Buffer): Promise<string> {
-  const parser = new PDFParse({ data: buffer });
-  try {
-    const result = await parser.getText();
-    return (result.text ?? '').trim();
-  } finally {
-    await parser.destroy();
-  }
+  const { text } = await pdfParse(buffer);
+  return (text ?? '').trim();
 }
 
 async function openAiChatJson(messages: unknown[]): Promise<Record<string, unknown>> {
