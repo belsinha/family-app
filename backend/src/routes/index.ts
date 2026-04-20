@@ -12,6 +12,7 @@ import templatesRoutes from './templates.js';
 import weeklySummaryRoutes from './weekly-summary.js';
 import challengesRoutes from './challenges.js';
 import onchainRoutes from './onchain.js';
+import allowanceRoutes from './allowance.js';
 
 const router = Router();
 
@@ -28,6 +29,7 @@ router.use('/tasks', tasksRoutes);
 router.use('/templates', templatesRoutes);
 router.use('/weekly-summary', weeklySummaryRoutes);
 router.use('/challenges', challengesRoutes);
+router.use('/allowance', allowanceRoutes);
 
 export default router;
 

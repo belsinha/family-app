@@ -7,11 +7,18 @@ import TodayView from './TodayView';
 import WeekView from './WeekView';
 import TemplatesView from './TemplatesView';
 import HistoryView from './HistoryView';
+import AllowanceView from './AllowanceView';
 
-type Tab = 'today' | 'week' | 'templates' | 'history';
+type Tab = 'today' | 'week' | 'templates' | 'history' | 'allowance';
 
 function parseTab(value: string | null): Tab | null {
-  if (value === 'today' || value === 'week' || value === 'templates' || value === 'history') {
+  if (
+    value === 'today' ||
+    value === 'week' ||
+    value === 'templates' ||
+    value === 'history' ||
+    value === 'allowance'
+  ) {
     return value;
   }
   return null;
@@ -122,6 +129,7 @@ export default function ChoresApp() {
     { id: 'week', label: 'Week' },
     { id: 'templates', label: 'Templates' },
     { id: 'history', label: 'History' },
+    { id: 'allowance', label: 'Allowance' },
   ];
   const tabs = isChoresSelfOnly ? allTabs.filter((t) => t.id === 'today') : allTabs;
 
@@ -194,6 +202,7 @@ export default function ChoresApp() {
           <TemplatesView members={members} editorMemberId={editorMemberId} />
         )}
         {!isChoresSelfOnly && tab === 'history' && <HistoryView />}
+        {!isChoresSelfOnly && tab === 'allowance' && <AllowanceView />}
       </div>
     </div>
   );

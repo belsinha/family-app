@@ -8,11 +8,33 @@ datasource db {
 }
 
 model HouseholdMember {
-  id            Int            @id @default(autoincrement())
-  name          String
-  canEditChores Boolean        @default(false)
-  taskTemplates TaskTemplate[] @relation("assignedTo")
-  taskInstances TaskInstance[]
+  id                 Int                 @id @default(autoincrement())
+  name               String
+  canEditChores      Boolean             @default(false)
+  taskTemplates      TaskTemplate[]      @relation("assignedTo")
+  taskInstances      TaskInstance[]
+  monthlyAllowances  MonthlyAllowance[]
+}
+
+model MonthlyAllowance {
+  id                  Int               @id @default(autoincrement())
+  yearMonth           String
+  householdMemberId   Int
+  householdMember     HouseholdMember   @relation(fields: [householdMemberId], references: [id], onDelete: Cascade)
+  baseCents           Int               @default(10000)
+  requiredChoreCount  Int
+  completedChoreCount Int
+  pendingChoreCount   Int
+  missedChoreCount    Int
+  proposedCents       Int
+  status              String            @default("PENDING_APPROVAL")
+  submittedAt         String
+  decidedAt           String?
+  approverUserId      Int?
+  rejectionReason     String?
+
+  @@unique([yearMonth, householdMemberId])
+  @@index([yearMonth, status])
 }
 
 model TaskTemplate {

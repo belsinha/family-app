@@ -185,6 +185,22 @@ export const api = {
     }),
   getWeeklySummary: (weekStart: string): Promise<ChoreWeeklySummary> =>
     request<ChoreWeeklySummary>(`/weekly-summary?weekStart=${weekStart}`),
+
+  getAllowanceMonthlyPreview: (yearMonth: string): Promise<AllowanceMonthlyPreviewResponse> =>
+    request<AllowanceMonthlyPreviewResponse>(`/allowance/monthly/${encodeURIComponent(yearMonth)}/preview`),
+  getAllowanceMonthlyLines: (yearMonth: string): Promise<AllowanceMonthlyLinesResponse> =>
+    request<AllowanceMonthlyLinesResponse>(`/allowance/monthly/${encodeURIComponent(yearMonth)}/lines`),
+  submitAllowanceMonthlyForApproval: (yearMonth: string): Promise<AllowanceSubmitResponse> =>
+    request<AllowanceSubmitResponse>(`/allowance/monthly/${encodeURIComponent(yearMonth)}/submit-for-approval`, {
+      method: 'POST',
+    }),
+  approveAllowanceLine: (lineId: number): Promise<MonthlyAllowanceLine> =>
+    request<MonthlyAllowanceLine>(`/allowance/lines/${lineId}/approve`, { method: 'POST' }),
+  rejectAllowanceLine: (lineId: number, reason?: string): Promise<MonthlyAllowanceLine> =>
+    request<MonthlyAllowanceLine>(`/allowance/lines/${lineId}/reject`, {
+      method: 'POST',
+      body: JSON.stringify({ reason: reason ?? null }),
+    }),
   getTemplates: (): Promise<ChoreTemplate[]> =>
     request<ChoreTemplate[]>('/templates'),
   updateTemplate: (id: number, data: Partial<ChoreTemplate>, editorUserId: number): Promise<ChoreTemplate> =>
@@ -282,6 +298,53 @@ export interface ChoreWeeklySummary {
     instances: ChoreTaskInstance[];
     missed: ChoreTaskInstance[];
   }>;
+}
+
+export type MonthlyAllowanceStatus = 'PENDING_APPROVAL' | 'APPROVED' | 'REJECTED';
+
+export interface MonthlyAllowanceBreakdown {
+  householdMemberId: number;
+  memberName: string;
+  baseCents: number;
+  requiredChoreCount: number;
+  completedChoreCount: number;
+  pendingChoreCount: number;
+  missedChoreCount: number;
+  proposedCents: number;
+}
+
+export interface MonthlyAllowanceLine {
+  id: number;
+  yearMonth: string;
+  householdMemberId: number;
+  householdMember: ChoreHouseholdMember;
+  baseCents: number;
+  requiredChoreCount: number;
+  completedChoreCount: number;
+  pendingChoreCount: number;
+  missedChoreCount: number;
+  proposedCents: number;
+  status: MonthlyAllowanceStatus;
+  submittedAt: string;
+  decidedAt: string | null;
+  approverUserId: number | null;
+  rejectionReason: string | null;
+  skipped?: boolean;
+}
+
+export interface AllowanceMonthlyPreviewResponse {
+  yearMonth: string;
+  breakdown: MonthlyAllowanceBreakdown[];
+}
+
+export interface AllowanceMonthlyLinesResponse {
+  yearMonth: string;
+  lines: MonthlyAllowanceLine[];
+}
+
+export interface AllowanceSubmitResponse {
+  yearMonth: string;
+  lines: MonthlyAllowanceLine[];
 }
 
 // Challenges (API returns snake_case)
