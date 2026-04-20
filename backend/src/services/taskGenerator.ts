@@ -7,10 +7,6 @@ function getDayOfWeek(date: Date): number {
   return date.getDay();
 }
 
-function isSameDay(d: Date, y: number, m: number, day: number): boolean {
-  return d.getFullYear() === y && d.getMonth() === m && d.getDate() === day;
-}
-
 function getWeekOfMonth(date: Date): number {
   const d = date.getDate();
   if (d <= 7) return 1;
@@ -77,7 +73,7 @@ export async function ensureInstancesForDate(taskDate: string): Promise<void> {
   const date = new Date(taskDate + 'T12:00:00');
   const templates = await prisma.taskTemplate.findMany({
     where: { active: true },
-    include: { assignedTo: true },
+    include: { assignees: true },
   });
 
   for (const t of templates) {
@@ -86,10 +82,15 @@ export async function ensureInstancesForDate(taskDate: string): Promise<void> {
       availableAfter = t.conditionalAfterTime;
     }
 
+    const effectiveDayOfWeek =
+      t.frequencyType === 'CONDITIONAL_SCHEDULE'
+        ? (t.conditionalDayOfWeek ?? null)
+        : (t.conditionalDayOfWeek ?? t.dayOfWeek ?? null);
+
     const { generate } = shouldGenerateForDate(
       {
         frequencyType: t.frequencyType,
-        dayOfWeek: t.dayOfWeek ?? null,
+        dayOfWeek: effectiveDayOfWeek,
         weekOfMonth: t.weekOfMonth ?? null,
         dayOfMonth: t.dayOfMonth ?? null,
         semiannualMonths: t.semiannualMonths,
@@ -99,18 +100,41 @@ export async function ensureInstancesForDate(taskDate: string): Promise<void> {
 
     if (!generate) continue;
 
-    await prisma.taskInstance.upsert({
-      where: {
-        templateId_taskDate: { templateId: t.id, taskDate },
-      },
-      create: {
-        templateId: t.id,
-        assignedToId: t.assignedToId,
-        taskDate,
-        status: 'PENDING',
-        availableAfter: availableAfter ?? undefined,
-      },
-      update: {},
-    });
+    if (t.anyoneMayComplete) {
+      const existingPool = await prisma.taskInstance.findFirst({
+        where: { templateId: t.id, taskDate, assignedToId: null },
+      });
+      if (!existingPool) {
+        await prisma.taskInstance.create({
+          data: {
+            templateId: t.id,
+            assignedToId: null,
+            taskDate,
+            status: 'PENDING',
+            availableAfter: availableAfter ?? undefined,
+          },
+        });
+      }
+      continue;
+    }
+
+    const memberIds = t.assignees.map((a) => a.householdMemberId);
+    if (memberIds.length === 0) continue;
+
+    for (const assignedToId of memberIds) {
+      await prisma.taskInstance.upsert({
+        where: {
+          templateId_taskDate_assignedToId: { templateId: t.id, taskDate, assignedToId },
+        },
+        create: {
+          templateId: t.id,
+          assignedToId,
+          taskDate,
+          status: 'PENDING',
+          availableAfter: availableAfter ?? undefined,
+        },
+        update: {},
+      });
+    }
   }
 }

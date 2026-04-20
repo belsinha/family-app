@@ -7,13 +7,21 @@ datasource db {
   url      = env("CHORES_DATABASE_URL")
 }
 
+model ChoreCategory {
+  id        Int            @id @default(autoincrement())
+  name      String         @unique
+  sortOrder Int            @default(0)
+  templates TaskTemplate[]
+}
+
 model HouseholdMember {
-  id                 Int                 @id @default(autoincrement())
-  name               String
-  canEditChores      Boolean             @default(false)
-  taskTemplates      TaskTemplate[]      @relation("assignedTo")
-  taskInstances      TaskInstance[]
-  monthlyAllowances  MonthlyAllowance[]
+  id                    Int                    @id @default(autoincrement())
+  name                  String
+  canEditChores         Boolean                @default(false)
+  taskInstances         TaskInstance[]         @relation("AssignedHouseholdTasks")
+  liabilityTaskInstances TaskInstance[]      @relation("AllowanceLiabilityMember")
+  monthlyAllowances     MonthlyAllowance[]
+  templateAssignees     TaskTemplateAssignee[]
 }
 
 model MonthlyAllowance {
@@ -26,6 +34,7 @@ model MonthlyAllowance {
   completedChoreCount Int
   pendingChoreCount   Int
   missedChoreCount    Int
+  excusedChoreCount   Int               @default(0)
   proposedCents       Int
   status              String            @default("PENDING_APPROVAL")
   submittedAt         String
@@ -37,41 +46,58 @@ model MonthlyAllowance {
   @@index([yearMonth, status])
 }
 
+model TaskTemplateAssignee {
+  templateId        Int
+  householdMemberId Int
+  template          TaskTemplate    @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  member            HouseholdMember @relation(fields: [householdMemberId], references: [id], onDelete: Cascade)
+
+  @@id([templateId, householdMemberId])
+}
+
 model TaskTemplate {
-  id                 Int       @id @default(autoincrement())
-  name               String
-  category           String    // Pet Care, Kitchen, Trash, Bathroom, Laundry, Bedrooms, Shared Areas, Household Maintenance
-  assignedToId       Int
-  assignedTo         HouseholdMember @relation("assignedTo", fields: [assignedToId], references: [id])
-  frequencyType      String    // DAILY, EVERY_OTHER_DAY, WEEKLY, MONTHLY, SEMIANNUAL, CONDITIONAL_SCHEDULE
-  dayOfWeek          Int?     // 0=Sun..6=Sat for WEEKLY
-  weekOfMonth        Int?     // 1-4 for MONTHLY
-  dayOfMonth         Int?     // 1-31 for MONTHLY (alternative to weekOfMonth)
-  semiannualMonths   String?  // JSON array e.g. [1,7] for January and July
-  conditionalDayOfWeek Int?   // for CONDITIONAL_SCHEDULE
-  conditionalAfterTime String? // "18:00" for Thursday after 18:00
-  timeBlock          String   // MORNING, AFTERNOON, NIGHT, ANY
-  pointsBase         Int      @default(1)
-  active             Boolean  @default(true)
-  taskInstances      TaskInstance[]
+  id                   Int                    @id @default(autoincrement())
+  name                 String
+  categoryId           Int
+  category             ChoreCategory          @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  frequencyType        String
+  dayOfWeek            Int?
+  weekOfMonth          Int?
+  dayOfMonth           Int?
+  semiannualMonths     String?
+  conditionalDayOfWeek Int?
+  conditionalAfterTime String?
+  timeBlock            String
+  pointsBase           Int                    @default(1)
+  active               Boolean                @default(true)
+  anyoneMayComplete    Boolean                @default(false)
+  taskInstances        TaskInstance[]
+  assignees            TaskTemplateAssignee[]
 }
 
 model TaskInstance {
-  id                  Int      @id @default(autoincrement())
-  templateId          Int
-  template            TaskTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
-  assignedToId        Int
-  assignedTo          HouseholdMember @relation(fields: [assignedToId], references: [id])
-  taskDate            String   // YYYY-MM-DD
-  status              String   // PENDING, DONE, MISSED
-  doneAt              String?  // ISO datetime
-  doneWithoutReminder Boolean  @default(false)
-  notes               String?
-  complaintLogged     Boolean  @default(false)
-  isExtra             Boolean  @default(false)
-  availableAfter      String?  // "18:00" or "21:00" - time when task becomes available (America/New_York)
+  id                         Int               @id @default(autoincrement())
+  templateId                 Int
+  template                   TaskTemplate      @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  assignedToId               Int?
+  assignedTo                 HouseholdMember?  @relation("AssignedHouseholdTasks", fields: [assignedToId], references: [id])
+  allowanceLiabilityMemberId Int?
+  allowanceLiabilityMember   HouseholdMember?  @relation("AllowanceLiabilityMember", fields: [allowanceLiabilityMemberId], references: [id])
+  taskDate                   String
+  status                     String
+  doneAt                     String?
+  doneWithoutReminder        Boolean           @default(false)
+  notes                      String?
+  complaintLogged            Boolean           @default(false)
+  isExtra                    Boolean           @default(false)
+  availableAfter             String?
+  excuseStatus               String            @default("NONE")
+  excuseNote                 String?
+  excuseRequestedAt          String?
+  excuseDecidedAt            String?
+  excuseDeciderUserId        Int?
 
-  @@unique([templateId, taskDate])
+  @@unique([templateId, taskDate, assignedToId])
   @@index([taskDate])
   @@index([assignedToId, taskDate])
 }

@@ -174,14 +174,38 @@ export const api = {
     if (params.userId != null) q.set('userId', String(params.userId));
     return request<ChoreTaskInstance[]>(`/tasks/today?${q}`);
   },
-  completeTask: (instanceId: number, doneWithoutReminder: boolean): Promise<ChoreTaskInstance> =>
+  completeTask: (
+    instanceId: number,
+    doneWithoutReminder: boolean,
+    completedByMemberId?: number
+  ): Promise<ChoreTaskInstance> =>
     request<ChoreTaskInstance>(`/tasks/${instanceId}/complete`, {
       method: 'POST',
-      body: JSON.stringify({ doneWithoutReminder }),
+      body: JSON.stringify({
+        doneWithoutReminder,
+        ...(completedByMemberId != null ? { completedByMemberId } : {}),
+      }),
+    }),
+  setTaskAllowanceLiability: (instanceId: number, householdMemberId: number): Promise<ChoreTaskInstance> =>
+    request<ChoreTaskInstance>(`/tasks/${instanceId}/allowance-liability`, {
+      method: 'PATCH',
+      body: JSON.stringify({ householdMemberId }),
     }),
   missTask: (instanceId: number): Promise<ChoreTaskInstance> =>
     request<ChoreTaskInstance>(`/tasks/${instanceId}/miss`, {
       method: 'POST',
+    }),
+  getPendingChoreExcuses: (): Promise<ChoreTaskInstance[]> =>
+    request<ChoreTaskInstance[]>('/tasks/excuse-requests/pending'),
+  submitChoreExcuseRequest: (instanceId: number, note: string): Promise<ChoreTaskInstance> =>
+    request<ChoreTaskInstance>(`/tasks/${instanceId}/excuse-request`, {
+      method: 'POST',
+      body: JSON.stringify({ note }),
+    }),
+  decideChoreExcuse: (instanceId: number, action: 'approve' | 'reject'): Promise<ChoreTaskInstance> =>
+    request<ChoreTaskInstance>(`/tasks/${instanceId}/excuse-decision`, {
+      method: 'POST',
+      body: JSON.stringify({ action }),
     }),
   getWeeklySummary: (weekStart: string): Promise<ChoreWeeklySummary> =>
     request<ChoreWeeklySummary>(`/weekly-summary?weekStart=${weekStart}`),
@@ -203,16 +227,36 @@ export const api = {
     }),
   getTemplates: (): Promise<ChoreTemplate[]> =>
     request<ChoreTemplate[]>('/templates'),
-  updateTemplate: (id: number, data: Partial<ChoreTemplate>, editorUserId: number): Promise<ChoreTemplate> =>
+  getChoreCategories: (): Promise<ChoreCategory[]> =>
+    request<ChoreCategory[]>('/chore-categories'),
+  createChoreCategory: (data: { name: string; sortOrder?: number }, editorUserId: number): Promise<ChoreCategory> =>
+    request<ChoreCategory>('/chore-categories', {
+      method: 'POST',
+      headers: { 'X-Editor-User-Id': String(editorUserId) },
+      body: JSON.stringify(data),
+    }),
+  updateChoreCategory: (
+    id: number,
+    data: { name?: string; sortOrder?: number },
+    editorUserId: number
+  ): Promise<ChoreCategory> =>
+    request<ChoreCategory>(`/chore-categories/${id}`, {
+      method: 'PATCH',
+      headers: { 'X-Editor-User-Id': String(editorUserId) },
+      body: JSON.stringify(data),
+    }),
+  deleteChoreCategory: (id: number, editorUserId: number): Promise<void> =>
+    request<void>(`/chore-categories/${id}`, {
+      method: 'DELETE',
+      headers: { 'X-Editor-User-Id': String(editorUserId) },
+    }),
+  updateTemplate: (id: number, data: Partial<ChoreTemplateSavePayload>, editorUserId: number): Promise<ChoreTemplate> =>
     request<ChoreTemplate>(`/templates/${id}`, {
       method: 'PUT',
       headers: { 'X-Editor-User-Id': String(editorUserId) },
       body: JSON.stringify(data),
     }),
-  createTemplate: (
-    data: Omit<ChoreTemplate, 'id' | 'assignedTo'>,
-    editorUserId: number
-  ): Promise<ChoreTemplate> =>
+  createTemplate: (data: ChoreTemplateSavePayload, editorUserId: number): Promise<ChoreTemplate> =>
     request<ChoreTemplate>('/templates', {
       method: 'POST',
       headers: { 'X-Editor-User-Id': String(editorUserId) },
@@ -254,12 +298,27 @@ export interface ChoreHouseholdMember {
   canEditChores: boolean;
 }
 
+export interface ChoreCategory {
+  id: number;
+  name: string;
+  sortOrder: number;
+}
+
+export interface ChoreTemplateAssigneeRow {
+  householdMemberId: number;
+  member: ChoreHouseholdMember;
+}
+
 export interface ChoreTemplate {
   id: number;
   name: string;
-  category: string;
+  categoryId: number;
+  category: ChoreCategory;
+  assignees: ChoreTemplateAssigneeRow[];
+  assigneeIds: number[];
   assignedToId: number;
-  assignedTo: ChoreHouseholdMember;
+  assignedTo: ChoreHouseholdMember | null;
+  anyoneMayComplete?: boolean;
   frequencyType: string;
   dayOfWeek: number | null;
   weekOfMonth: number | null;
@@ -272,12 +331,34 @@ export interface ChoreTemplate {
   active: boolean;
 }
 
+/** Fields accepted by POST /templates and PATCH-style PUT */
+export interface ChoreTemplateSavePayload {
+  name: string;
+  categoryId: number;
+  assigneeIds: number[];
+  anyoneMayComplete?: boolean;
+  frequencyType: string;
+  dayOfWeek?: number | null;
+  weekOfMonth?: number | null;
+  dayOfMonth?: number | null;
+  semiannualMonths?: string | null;
+  conditionalDayOfWeek?: number | null;
+  conditionalAfterTime?: string | null;
+  timeBlock: string;
+  pointsBase: number;
+  active: boolean;
+}
+
+export type ChoreExcuseStatus = 'NONE' | 'PENDING' | 'APPROVED' | 'REJECTED';
+
 export interface ChoreTaskInstance {
   id: number;
   templateId: number;
   template: ChoreTemplate;
-  assignedToId: number;
-  assignedTo: ChoreHouseholdMember;
+  assignedToId: number | null;
+  assignedTo: ChoreHouseholdMember | null;
+  allowanceLiabilityMemberId?: number | null;
+  allowanceLiabilityMember?: ChoreHouseholdMember | null;
   taskDate: string;
   status: string;
   doneAt: string | null;
@@ -286,13 +367,18 @@ export interface ChoreTaskInstance {
   complaintLogged: boolean;
   isExtra: boolean;
   availableAfter: string | null;
+  excuseStatus?: ChoreExcuseStatus;
+  excuseNote?: string | null;
+  excuseRequestedAt?: string | null;
+  excuseDecidedAt?: string | null;
+  excuseDeciderUserId?: number | null;
 }
 
 export interface ChoreWeeklySummary {
   weekStart: string;
   weekEnd: string;
   byUser: Array<{
-    member: ChoreHouseholdMember;
+    member: ChoreHouseholdMember | { id: number; name: string; canEditChores?: boolean };
     totalPoints: number;
     classification: 'green' | 'yellow' | 'red';
     instances: ChoreTaskInstance[];
@@ -310,6 +396,7 @@ export interface MonthlyAllowanceBreakdown {
   completedChoreCount: number;
   pendingChoreCount: number;
   missedChoreCount: number;
+  excusedChoreCount?: number;
   proposedCents: number;
 }
 
@@ -323,6 +410,7 @@ export interface MonthlyAllowanceLine {
   completedChoreCount: number;
   pendingChoreCount: number;
   missedChoreCount: number;
+  excusedChoreCount?: number;
   proposedCents: number;
   status: MonthlyAllowanceStatus;
   submittedAt: string;

@@ -9,6 +9,9 @@ import {
 
 const router = Router();
 
+const POOL_MEMBER_ID = -1;
+const poolMember = { id: POOL_MEMBER_ID, name: 'Anyone (household)', canEditChores: false };
+
 function getWeekBounds(weekStart: string): { start: string; end: string } {
   const start = new Date(weekStart + 'T00:00:00');
   const end = new Date(start);
@@ -45,15 +48,25 @@ router.get('/', authenticate, async (req: AuthRequest, res, next) => {
     const instances = await prisma.taskInstance.findMany({
       where: {
         taskDate: { gte: start, lte: end },
-        ...(childMemberId != null ? { assignedToId: childMemberId } : {}),
+        ...(childMemberId != null
+          ? {
+              OR: [
+                { assignedToId: childMemberId },
+                { assignedToId: null, template: { anyoneMayComplete: true } },
+              ],
+            }
+          : {}),
       },
-      include: { template: true, assignedTo: true },
+      include: {
+        template: { include: { category: true, assignees: { include: { member: true } } } },
+        assignedTo: true,
+      },
     });
 
     const byUser = new Map<
       number,
       {
-        member: { id: number; name: string };
+        member: { id: number; name: string; canEditChores?: boolean };
         totalPoints: number;
         classification: 'green' | 'yellow' | 'red';
         instances: typeof instances;
@@ -62,10 +75,14 @@ router.get('/', authenticate, async (req: AuthRequest, res, next) => {
     >();
 
     for (const inst of instances) {
-      const uid = inst.assignedToId;
+      if (inst.assignedToId == null && !inst.template.anyoneMayComplete) {
+        continue;
+      }
+      const uid = inst.assignedToId ?? POOL_MEMBER_ID;
+      const member = inst.assignedTo ?? poolMember;
       if (!byUser.has(uid)) {
         byUser.set(uid, {
-          member: inst.assignedTo,
+          member,
           totalPoints: 0,
           classification: 'red',
           instances: [],

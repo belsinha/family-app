@@ -31,6 +31,7 @@ export type MonthlyAllowanceBreakdown = {
   completedChoreCount: number;
   pendingChoreCount: number;
   missedChoreCount: number;
+  excusedChoreCount: number;
   proposedCents: number;
 };
 
@@ -44,6 +45,58 @@ function proposedCentsForCounts(
   }
   const safeCompleted = Math.min(Math.max(0, completed), required);
   return Math.round((baseCents * safeCompleted) / required);
+}
+
+/** Instances that count toward allowance (not extra, active template, not parent-approved excused). */
+function isAllowanceEligible(inst: {
+  isExtra: boolean;
+  excuseStatus: string;
+  template: { active: boolean };
+}): boolean {
+  if (inst.isExtra) return false;
+  if (!inst.template.active) return false;
+  if (inst.excuseStatus === 'APPROVED') return false;
+  return true;
+}
+
+type Inst = Awaited<ReturnType<typeof prisma.taskInstance.findMany>>[number] & {
+  template: { active: boolean; anyoneMayComplete: boolean };
+};
+
+function instanceCountsForMember(inst: Inst, memberId: number): {
+  required: boolean;
+  completed: boolean;
+  pending: boolean;
+  missed: boolean;
+} | null {
+  if (!isAllowanceEligible(inst)) return null;
+
+  const pool = inst.template.anyoneMayComplete;
+
+  if (!pool) {
+    if (inst.assignedToId !== memberId) return null;
+    return {
+      required: true,
+      completed: inst.status === 'DONE',
+      pending: inst.status === 'PENDING',
+      missed: inst.status === 'MISSED',
+    };
+  }
+
+  if (inst.status === 'DONE' && inst.assignedToId === memberId) {
+    return { required: true, completed: true, pending: false, missed: false };
+  }
+
+  if (inst.status !== 'DONE' && inst.allowanceLiabilityMemberId === memberId) {
+    return {
+      required: true,
+      completed: false,
+      pending: inst.status === 'PENDING',
+      missed: inst.status === 'MISSED',
+    };
+  }
+
+  return null;
 }
 
 export async function computeMonthlyAllowanceBreakdown(
@@ -63,31 +116,53 @@ export async function computeMonthlyAllowanceBreakdown(
     orderBy: { id: 'asc' },
   });
 
-  const instances = await prisma.taskInstance.findMany({
+  const instances = (await prisma.taskInstance.findMany({
     where: {
       taskDate: { gte: start, lte: end },
-      isExtra: false,
       assignedToId: { in: members.map((m) => m.id) },
       template: { active: true },
     },
     include: { template: true },
-  });
+  })) as Inst[];
 
-  const byMember = new Map<number, typeof instances>();
-  for (const m of members) {
-    byMember.set(m.id, []);
-  }
-  for (const inst of instances) {
-    const list = byMember.get(inst.assignedToId);
-    if (list) list.push(inst);
-  }
+  const poolInstances = (await prisma.taskInstance.findMany({
+    where: {
+      taskDate: { gte: start, lte: end },
+      assignedToId: null,
+      template: { active: true, anyoneMayComplete: true },
+    },
+    include: { template: true },
+  })) as Inst[];
+
+  const all: Inst[] = [...instances, ...poolInstances];
 
   return members.map((m) => {
-    const list = byMember.get(m.id) ?? [];
-    const requiredChoreCount = list.length;
-    const completedChoreCount = list.filter((i) => i.status === 'DONE').length;
-    const pendingChoreCount = list.filter((i) => i.status === 'PENDING').length;
-    const missedChoreCount = list.filter((i) => i.status === 'MISSED').length;
+    let requiredChoreCount = 0;
+    let completedChoreCount = 0;
+    let pendingChoreCount = 0;
+    let missedChoreCount = 0;
+    let excusedChoreCount = 0;
+
+    for (const inst of all) {
+      if (!inst.isExtra && inst.template.active && inst.excuseStatus === 'APPROVED') {
+        if (!inst.template.anyoneMayComplete && inst.assignedToId === m.id) {
+          excusedChoreCount += 1;
+        }
+        if (inst.template.anyoneMayComplete && inst.allowanceLiabilityMemberId === m.id) {
+          excusedChoreCount += 1;
+        }
+      }
+
+      if (!isAllowanceEligible(inst)) continue;
+
+      const row = instanceCountsForMember(inst, m.id);
+      if (!row?.required) continue;
+      requiredChoreCount += 1;
+      if (row.completed) completedChoreCount += 1;
+      if (row.pending) pendingChoreCount += 1;
+      if (row.missed) missedChoreCount += 1;
+    }
+
     const proposedCents = proposedCentsForCounts(baseCents, requiredChoreCount, completedChoreCount);
     return {
       householdMemberId: m.id,
@@ -97,6 +172,7 @@ export async function computeMonthlyAllowanceBreakdown(
       completedChoreCount,
       pendingChoreCount,
       missedChoreCount,
+      excusedChoreCount,
       proposedCents,
     };
   });

@@ -81,14 +81,31 @@ async function main() {
   if (existingCount >= templates.length) {
     console.log('Chores seed: templates already present, skipping.');
   } else {
+    const distinctCategories = [...new Set(templates.map((x) => x.category))];
+    let order = 0;
+    for (const name of distinctCategories) {
+      await prisma.choreCategory.upsert({
+        where: { name },
+        create: { name, sortOrder: order++ },
+        update: {},
+      });
+    }
+
+    const allCats = await prisma.choreCategory.findMany();
+    const categoryIdByName = new Map(allCats.map((c) => [c.name, c.id]));
+
     await prisma.taskTemplate.deleteMany({});
+
     for (const t of templates) {
+      const categoryId = categoryIdByName.get(t.category);
+      if (categoryId == null) {
+        throw new Error(`Missing category: ${t.category}`);
+      }
       const assignedToId = members[t.assignedTo as keyof typeof members].id;
-      await prisma.taskTemplate.create({
+      const created = await prisma.taskTemplate.create({
         data: {
           name: t.name,
-          category: t.category,
-          assignedToId,
+          categoryId,
           frequencyType: t.frequencyType,
           dayOfWeek: 'dayOfWeek' in t ? t.dayOfWeek : null,
           weekOfMonth: 'weekOfMonth' in t ? t.weekOfMonth : null,
@@ -99,6 +116,9 @@ async function main() {
           pointsBase: 1,
           active: true,
         },
+      });
+      await prisma.taskTemplateAssignee.create({
+        data: { templateId: created.id, householdMemberId: assignedToId },
       });
     }
   }

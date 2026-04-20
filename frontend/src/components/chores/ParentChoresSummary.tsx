@@ -64,15 +64,24 @@ export default function ParentChoresSummary({ childNames }: ParentChoresSummaryP
       {childNames.length > 0 && (
         <ul className="space-y-2 text-sm border-t border-gray-100 pt-4">
           {childNames.map((name) => {
-            const theirs = instances.filter(
-              (i) =>
-                i.assignedTo?.name &&
-                i.assignedTo.name.trim().toLowerCase() === name.trim().toLowerCase()
-            );
+            const nameLc = name.trim().toLowerCase();
+            const theirs = instances.filter((i) => {
+              const assigneeMatch =
+                i.assignedTo?.name && i.assignedTo.name.trim().toLowerCase() === nameLc;
+              const liabilityMatch =
+                i.allowanceLiabilityMember?.name &&
+                i.allowanceLiabilityMember.name.trim().toLowerCase() === nameLc &&
+                i.assignedToId == null &&
+                Boolean(i.template.anyoneMayComplete);
+              return assigneeMatch || liabilityMatch;
+            });
             if (theirs.length === 0) return null;
             const theirDone = theirs.filter((i) => i.status === 'DONE').length;
             const theirPending = theirs.length - theirDone;
-            const memberId = theirs[0]?.assignedTo?.id;
+            const row0 = theirs[0];
+            const memberId =
+              row0?.assignedTo?.id ??
+              (row0?.allowanceLiabilityMemberId != null ? row0.allowanceLiabilityMemberId : undefined);
             return (
               <li key={name} className="flex flex-wrap items-center justify-between gap-2">
                 <span className="text-gray-700">

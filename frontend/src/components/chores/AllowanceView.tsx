@@ -130,6 +130,15 @@ export default function AllowanceView() {
             Extra (bonus) chores and inactive templates do not count toward this allowance. Bonus points from chores
             are separate and are not included here.
           </li>
+          <li>
+            If a parent approves an allowance excuse on a task (from Today&apos;s pending list), that chore is left out
+            of the required count for the month so it does not lower the payout.
+          </li>
+          <li>
+            For shared &quot;anyone&quot; chores (one household task per day), the child who completes it earns the
+            completion; if it stays undone, a parent picks which child carries the missed chore for allowance purposes
+            on that day.
+          </li>
           <li>Use &quot;Submit for approval&quot; when the month is ready for review; then approve or reject each line.</li>
         </ul>
       </div>
@@ -186,6 +195,7 @@ export default function AllowanceView() {
                 <th className="px-4 py-3 text-right font-semibold text-gray-900">Done</th>
                 <th className="px-4 py-3 text-right font-semibold text-gray-900">Pending</th>
                 <th className="px-4 py-3 text-right font-semibold text-gray-900">Missed</th>
+                <th className="px-4 py-3 text-right font-semibold text-gray-900">Excused</th>
                 <th className="px-4 py-3 text-right font-semibold text-gray-900">Proposed</th>
                 <th className="px-4 py-3 text-left font-semibold text-gray-900">Status</th>
                 <th className="px-4 py-3 text-left font-semibold text-gray-900">Actions</th>
@@ -202,6 +212,7 @@ export default function AllowanceView() {
                     <td className="px-4 py-3 text-right text-gray-800">{row.completedChoreCount}</td>
                     <td className="px-4 py-3 text-right text-gray-800">{row.pendingChoreCount}</td>
                     <td className="px-4 py-3 text-right text-gray-800">{row.missedChoreCount}</td>
+                    <td className="px-4 py-3 text-right text-gray-800">{row.excusedChoreCount ?? 0}</td>
                     <td className="px-4 py-3 text-right font-semibold text-gray-900">
                       {formatUsdFromCents(row.proposedCents)}
                     </td>
