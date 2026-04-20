@@ -1,13 +1,20 @@
 import { Router, Request, Response, NextFunction } from 'express';
+import multer from 'multer';
 import type { Prisma } from '@prisma/client';
 import { prisma } from '../db/prisma.js';
 import { authenticate, type AuthRequest } from '../middleware/auth.js';
+import { buildImportPreview } from '../services/choreImportParse.js';
 import {
   hasFullChoresAccess,
   resolveHouseholdMemberIdForChildUser,
 } from '../services/choresAccess.js';
 
 const router = Router();
+
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 15 * 1024 * 1024 },
+});
 
 const templateInclude = {
   category: true,
@@ -21,6 +28,7 @@ function formatTemplate(t: TemplateWithRelations) {
   return {
     id: t.id,
     name: t.name,
+    description: t.description ?? null,
     categoryId: t.categoryId,
     category: t.category,
     frequencyType: t.frequencyType,
@@ -121,6 +129,31 @@ router.get('/', authenticate, async (req: AuthRequest, res, next) => {
   }
 });
 
+router.post(
+  '/import-parse',
+  authenticate,
+  requireCanEditChores,
+  upload.single('file'),
+  async (req: AuthRequest, res, next) => {
+    try {
+      if (!req.file?.buffer) {
+        return res.status(400).json({ error: 'Missing file: send multipart field "file".' });
+      }
+      const categories = await prisma.choreCategory.findMany({ orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }] });
+      const result = await buildImportPreview({
+        buffer: req.file.buffer,
+        mimetype: req.file.mimetype,
+        originalname: req.file.originalname || 'upload',
+        categories,
+      });
+      res.json(result);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Import parse failed';
+      return res.status(400).json({ error: msg });
+    }
+  }
+);
+
 router.get('/:id', authenticate, async (req: AuthRequest, res, next) => {
   try {
     if (!req.user) {
@@ -186,6 +219,10 @@ router.post('/', authenticate, requireCanEditChores, async (req, res, next) => {
         const t = await tx.taskTemplate.create({
           data: {
             name,
+            description:
+              body.description !== undefined && body.description !== null && String(body.description).trim()
+                ? String(body.description).trim()
+                : null,
             categoryId,
             anyoneMayComplete,
             frequencyType: String(body.frequencyType ?? 'DAILY'),
@@ -248,6 +285,12 @@ router.put('/:id', authenticate, requireCanEditChores, async (req, res, next) =>
       where: { id },
       data: {
         ...(body.name != null && { name: String(body.name).trim() }),
+        ...(body.description !== undefined && {
+          description:
+            body.description == null || String(body.description).trim() === ''
+              ? null
+              : String(body.description).trim(),
+        }),
         ...(body.categoryId != null && { categoryId: Number(body.categoryId) }),
         ...(body.frequencyType != null && { frequencyType: String(body.frequencyType) }),
         ...(body.dayOfWeek !== undefined && {

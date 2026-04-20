@@ -39,7 +39,15 @@ async function request<T>(
       throw new Error(errorMessage);
     }
 
-    return response.json();
+    const bodyText = await response.text();
+    if (!bodyText.trim()) {
+      return undefined as T;
+    }
+    try {
+      return JSON.parse(bodyText) as T;
+    } catch {
+      return undefined as T;
+    }
   } catch (error) {
     if (error instanceof Error) {
       throw error;
@@ -267,6 +275,36 @@ export const api = {
       method: 'DELETE',
       headers: { 'X-Editor-User-Id': String(editorUserId) },
     }),
+  parseTemplateImport: (file: File, editorUserId: number): Promise<TemplateImportParseResponse> => {
+    const url = `${API_BASE_URL}/templates/import-parse`;
+    const token = localStorage.getItem('authToken');
+    const fd = new FormData();
+    fd.append('file', file);
+    return fetch(url, {
+      method: 'POST',
+      headers: {
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        'X-Editor-User-Id': String(editorUserId),
+      },
+      body: fd,
+    }).then(async (response) => {
+      const text = await response.text();
+      if (!response.ok) {
+        let errorMessage = `Request failed with status ${response.status}`;
+        try {
+          const err = JSON.parse(text) as ApiError;
+          errorMessage = err.message || err.error || errorMessage;
+        } catch {
+          if (text) errorMessage = text;
+        }
+        throw new Error(errorMessage);
+      }
+      if (!text.trim()) {
+        throw new Error('Empty response from import parse');
+      }
+      return JSON.parse(text) as TemplateImportParseResponse;
+    });
+  },
 
   // Challenges
   getChallengesByChildId: (childId: number): Promise<Challenge[]> =>
@@ -304,6 +342,24 @@ export interface ChoreCategory {
   sortOrder: number;
 }
 
+export type TemplateImportCategoryMatch = 'exact' | 'partial' | 'fallback';
+
+export interface TemplateImportPreviewItem {
+  name: string;
+  description: string | null;
+  categoryId: number;
+  categoryMatch: TemplateImportCategoryMatch;
+  categoryHint: string | null;
+  frequencyType: string;
+  timeBlock: string;
+}
+
+export interface TemplateImportParseResponse {
+  parseMode: 'openai' | 'lines';
+  message?: string;
+  items: TemplateImportPreviewItem[];
+}
+
 export interface ChoreTemplateAssigneeRow {
   householdMemberId: number;
   member: ChoreHouseholdMember;
@@ -312,6 +368,7 @@ export interface ChoreTemplateAssigneeRow {
 export interface ChoreTemplate {
   id: number;
   name: string;
+  description?: string | null;
   categoryId: number;
   category: ChoreCategory;
   assignees: ChoreTemplateAssigneeRow[];
@@ -334,6 +391,7 @@ export interface ChoreTemplate {
 /** Fields accepted by POST /templates and PATCH-style PUT */
 export interface ChoreTemplateSavePayload {
   name: string;
+  description?: string | null;
   categoryId: number;
   assigneeIds: number[];
   anyoneMayComplete?: boolean;

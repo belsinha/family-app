@@ -1,10 +1,11 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import {
   api,
   type ChoreTemplate,
   type ChoreHouseholdMember,
   type ChoreCategory,
   type ChoreTemplateSavePayload,
+  type TemplateImportPreviewItem,
 } from '../../utils/api';
 
 const FREQUENCY_TYPES = [
@@ -44,6 +45,7 @@ interface TemplatesViewProps {
 
 type Draft = {
   name: string;
+  description: string;
   categoryId: number | null;
   assigneeIds: number[];
   anyoneMayComplete: boolean;
@@ -62,6 +64,7 @@ type Draft = {
 function templateToDraft(t: ChoreTemplate): Draft {
   return {
     name: t.name,
+    description: t.description?.trim() ?? '',
     categoryId: t.categoryId,
     assigneeIds: [...t.assigneeIds],
     anyoneMayComplete: t.anyoneMayComplete === true,
@@ -84,6 +87,7 @@ function emptyDraft(categories: ChoreCategory[], members: ChoreHouseholdMember[]
   const defaultAssignees = firstMembers.length > 0 ? [firstMembers[0]] : members[0]?.id != null ? [members[0].id] : [];
   return {
     name: '',
+    description: '',
     categoryId: firstCat,
     assigneeIds: defaultAssignees,
     anyoneMayComplete: false,
@@ -157,6 +161,15 @@ export default function TemplatesView({ members, editorMemberId }: TemplatesView
   const [draft, setDraft] = useState<Draft>(() => emptyDraft([], []));
   const [saving, setSaving] = useState(false);
   const [newCategoryName, setNewCategoryName] = useState('');
+  const importFileRef = useRef<HTMLInputElement>(null);
+  const [importParsing, setImportParsing] = useState(false);
+  const [importReviewOpen, setImportReviewOpen] = useState(false);
+  const [importBulkSaving, setImportBulkSaving] = useState(false);
+  const [importRows, setImportRows] = useState<(TemplateImportPreviewItem & { selected: boolean })[]>([]);
+  const [importParseMode, setImportParseMode] = useState<'openai' | 'lines' | null>(null);
+  const [importParseMessage, setImportParseMessage] = useState<string | null>(null);
+  const [renamingCategoryId, setRenamingCategoryId] = useState<number | null>(null);
+  const [renamingCategoryValue, setRenamingCategoryValue] = useState('');
 
   const canEdit = editorMemberId != null;
 
@@ -185,6 +198,11 @@ export default function TemplatesView({ members, editorMemberId }: TemplatesView
       return { ...d, categoryId: first };
     });
   }, [modalOpen, editingId, categories]);
+
+  const sortedCategories = useMemo(
+    () => [...categories].sort((a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name)),
+    [categories]
+  );
 
   const filteredTemplates = useMemo(() => {
     return templates.filter((t) => {
@@ -240,6 +258,108 @@ export default function TemplatesView({ members, editorMemberId }: TemplatesView
     }
   };
 
+  const defaultAssigneeIdsForNewTemplate = (): number[] => {
+    const firstMembers = members.filter((m) => !m.canEditChores).map((m) => m.id);
+    return firstMembers.length > 0 ? [firstMembers[0]] : members[0]?.id != null ? [members[0].id] : [];
+  };
+
+  const onImportFileSelected = async (file: File | undefined) => {
+    if (!file || !canEdit || editorMemberId == null) return;
+    setImportParsing(true);
+    setError(null);
+    try {
+      const res = await api.parseTemplateImport(file, editorMemberId);
+      setImportRows(res.items.map((i) => ({ ...i, selected: true })));
+      setImportParseMode(res.parseMode);
+      setImportParseMessage(res.message ?? null);
+      setImportReviewOpen(true);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Import failed');
+    } finally {
+      setImportParsing(false);
+    }
+  };
+
+  const closeImportReview = () => {
+    setImportReviewOpen(false);
+    setImportRows([]);
+    setImportParseMode(null);
+    setImportParseMessage(null);
+  };
+
+  const commitImportSelected = async () => {
+    if (!canEdit || editorMemberId == null) return;
+    const selected = importRows.filter((r) => r.selected);
+    if (selected.length === 0) {
+      setError('Select at least one row to add.');
+      return;
+    }
+    const defaultAssignees = defaultAssigneeIdsForNewTemplate();
+    if (defaultAssignees.length === 0) {
+      setError('No household members available for assignees.');
+      return;
+    }
+    setImportBulkSaving(true);
+    setError(null);
+    try {
+      for (const row of selected) {
+        const name = row.name.trim();
+        if (!name) continue;
+        const payload: ChoreTemplateSavePayload = {
+          name,
+          description: row.description?.trim() || null,
+          categoryId: row.categoryId,
+          assigneeIds: defaultAssignees,
+          anyoneMayComplete: false,
+          frequencyType: row.frequencyType,
+          dayOfWeek: null,
+          weekOfMonth: null,
+          dayOfMonth: null,
+          semiannualMonths: row.frequencyType === 'SEMIANNUAL' ? '[1,7]' : null,
+          conditionalDayOfWeek: null,
+          conditionalAfterTime: null,
+          timeBlock: row.timeBlock,
+          pointsBase: 1,
+          active: true,
+        };
+        await api.createTemplate(payload, editorMemberId);
+      }
+      closeImportReview();
+      loadAll();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to add templates');
+    } finally {
+      setImportBulkSaving(false);
+    }
+  };
+
+  const saveCategoryRename = async (id: number) => {
+    if (!canEdit || editorMemberId == null) return;
+    const name = renamingCategoryValue.trim();
+    if (!name) return;
+    setError(null);
+    try {
+      await api.updateChoreCategory(id, { name }, editorMemberId);
+      setRenamingCategoryId(null);
+      loadAll();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not rename category');
+    }
+  };
+
+  const removeCategory = async (id: number) => {
+    if (!canEdit || editorMemberId == null) return;
+    if (!window.confirm('Delete this category? It must have no templates.')) return;
+    setError(null);
+    try {
+      await api.deleteChoreCategory(id, editorMemberId);
+      if (categoryFilterId === id) setCategoryFilterId('all');
+      loadAll();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not delete category');
+    }
+  };
+
   const draftToPayload = (): ChoreTemplateSavePayload | null => {
     if (!draft.name.trim()) return null;
     if (draft.categoryId == null) return null;
@@ -252,6 +372,7 @@ export default function TemplatesView({ members, editorMemberId }: TemplatesView
           : null;
     return {
       name: draft.name.trim(),
+      description: draft.description.trim() || null,
       categoryId: draft.categoryId,
       assigneeIds: draft.assigneeIds,
       anyoneMayComplete: draft.anyoneMayComplete,
@@ -338,7 +459,7 @@ export default function TemplatesView({ members, editorMemberId }: TemplatesView
               className="w-full max-w-[14rem] rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm shadow-sm"
             >
               <option value="all">All categories</option>
-              {categories.map((c) => (
+              {sortedCategories.map((c) => (
                 <option key={c.id} value={c.id}>
                   {c.name}
                 </option>
@@ -454,7 +575,7 @@ export default function TemplatesView({ members, editorMemberId }: TemplatesView
           </button>
         </div>
         {canEdit && (
-          <div>
+          <div className="flex flex-wrap items-center gap-2">
             <button
               type="button"
               onClick={openCreate}
@@ -462,9 +583,86 @@ export default function TemplatesView({ members, editorMemberId }: TemplatesView
             >
               New task template
             </button>
+            <button
+              type="button"
+              disabled={importParsing}
+              onClick={() => importFileRef.current?.click()}
+              className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-800 shadow-sm hover:bg-gray-50 disabled:opacity-50"
+            >
+              {importParsing ? 'Reading file…' : 'Import from PDF, image, or .txt'}
+            </button>
+            <input
+              ref={importFileRef}
+              type="file"
+              accept=".pdf,.txt,application/pdf,text/plain,image/jpeg,image/png,image/gif,image/webp"
+              className="hidden"
+              onChange={(e) => {
+                void onImportFileSelected(e.target.files?.[0]);
+                e.target.value = '';
+              }}
+            />
           </div>
         )}
       </div>
+
+      {canEdit && (
+        <section className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
+          <h3 className="text-sm font-semibold text-gray-900">Categories</h3>
+          <p className="mt-1 text-xs text-gray-600">
+            Rename or remove categories. Delete is only allowed when no templates reference the category.
+          </p>
+          <ul className="mt-3 divide-y divide-gray-100 rounded-lg border border-gray-100">
+            {sortedCategories.map((c) => (
+              <li key={c.id} className="flex flex-wrap items-center gap-2 px-3 py-2 text-sm">
+                {renamingCategoryId === c.id ? (
+                  <>
+                    <input
+                      className="min-w-[10rem] flex-1 rounded border border-gray-300 px-2 py-1"
+                      value={renamingCategoryValue}
+                      onChange={(e) => setRenamingCategoryValue(e.target.value)}
+                    />
+                    <button
+                      type="button"
+                      className="rounded border border-gray-300 bg-white px-2 py-1 text-xs font-medium hover:bg-gray-50"
+                      onClick={() => void saveCategoryRename(c.id)}
+                    >
+                      Save
+                    </button>
+                    <button
+                      type="button"
+                      className="rounded border border-transparent px-2 py-1 text-xs text-gray-600 hover:bg-gray-50"
+                      onClick={() => setRenamingCategoryId(null)}
+                    >
+                      Cancel
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <span className="min-w-[8rem] flex-1 font-medium text-gray-900">{c.name}</span>
+                    <button
+                      type="button"
+                      className="text-xs font-medium text-blue-700 hover:underline"
+                      onClick={() => {
+                        setRenamingCategoryId(c.id);
+                        setRenamingCategoryValue(c.name);
+                      }}
+                    >
+                      Rename
+                    </button>
+                    <button
+                      type="button"
+                      className="text-xs font-medium text-red-600 hover:underline"
+                      onClick={() => void removeCategory(c.id)}
+                    >
+                      Delete
+                    </button>
+                  </>
+                )}
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
 
       <p className="text-sm text-gray-600">
         Showing {filteredTemplates.length} of {templates.length} template{templates.length !== 1 ? 's' : ''}.
@@ -486,7 +684,12 @@ export default function TemplatesView({ members, editorMemberId }: TemplatesView
           <tbody className="divide-y divide-gray-100 bg-white">
             {filteredTemplates.map((t) => (
               <tr key={t.id} className="hover:bg-gray-50/80">
-                <td className="px-3 py-2 font-medium text-gray-900">{t.name}</td>
+                <td className="px-3 py-2 text-gray-900">
+                  <div className="font-medium">{t.name}</div>
+                  {t.description ? (
+                    <div className="mt-0.5 max-w-md text-xs font-normal text-gray-600">{t.description}</div>
+                  ) : null}
+                </td>
                 <td className="px-3 py-2 text-gray-700">{t.category.name}</td>
                 <td className="px-3 py-2 text-gray-700">
                   {t.anyoneMayComplete ? (
@@ -567,6 +770,17 @@ export default function TemplatesView({ members, editorMemberId }: TemplatesView
                 />
               </div>
 
+              <div>
+                <label className="text-sm font-medium text-gray-800">Description (optional)</label>
+                <textarea
+                  className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  placeholder="Extra detail shown under the task name"
+                  rows={2}
+                  value={draft.description}
+                  onChange={(e) => setDraft((d) => ({ ...d, description: e.target.value }))}
+                />
+              </div>
+
               <div className="rounded-lg border border-gray-200 bg-gray-50/80 p-4">
                 <label className="text-sm font-medium text-gray-800">Category</label>
                 <select
@@ -580,7 +794,7 @@ export default function TemplatesView({ members, editorMemberId }: TemplatesView
                   }
                 >
                   <option value="">Select a category…</option>
-                  {categories.map((c) => (
+                  {sortedCategories.map((c) => (
                     <option key={c.id} value={c.id}>
                       {c.name}
                     </option>
@@ -810,6 +1024,184 @@ export default function TemplatesView({ members, editorMemberId }: TemplatesView
                 className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
               >
                 {saving ? 'Saving…' : 'Save template'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {importReviewOpen && canEdit && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/45 p-2 sm:p-4">
+          <div
+            className="max-h-[92vh] w-full max-w-5xl overflow-hidden rounded-xl bg-white shadow-2xl ring-1 ring-black/5 flex flex-col"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="import-review-title"
+          >
+            <div className="border-b border-gray-100 px-4 py-3 sm:px-6">
+              <h3 id="import-review-title" className="text-lg font-semibold text-gray-900">
+                Review imported tasks
+              </h3>
+              <p className="mt-1 text-sm text-gray-600">
+                Parsed using {importParseMode === 'openai' ? 'structured extraction (OpenAI)' : 'line-by-line heuristics'}.
+                Adjust categories, wording, and schedule before adding. Assignees default to the first child in the list;
+                edit each template afterward if needed.
+              </p>
+              {importParseMessage ? (
+                <p className="mt-2 text-sm text-amber-800">{importParseMessage}</p>
+              ) : null}
+            </div>
+            <div className="min-h-0 flex-1 overflow-auto px-2 py-3 sm:px-4">
+              <table className="min-w-full text-left text-xs sm:text-sm">
+                <thead className="sticky top-0 bg-gray-50 text-gray-700">
+                  <tr>
+                    <th className="px-2 py-2 font-semibold">Use</th>
+                    <th className="px-2 py-2 font-semibold">Task</th>
+                    <th className="px-2 py-2 font-semibold">Description</th>
+                    <th className="px-2 py-2 font-semibold">Category</th>
+                    <th className="px-2 py-2 font-semibold">Match</th>
+                    <th className="px-2 py-2 font-semibold">How often</th>
+                    <th className="px-2 py-2 font-semibold">Time</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {importRows.map((row, idx) => (
+                    <tr key={`${idx}-${row.name}`} className="align-top">
+                      <td className="px-2 py-2">
+                        <input
+                          type="checkbox"
+                          checked={row.selected}
+                          onChange={() =>
+                            setImportRows((rows) =>
+                              rows.map((r, i) => (i === idx ? { ...r, selected: !r.selected } : r))
+                            )
+                          }
+                        />
+                      </td>
+                      <td className="px-2 py-2">
+                        <input
+                          className="w-full min-w-[8rem] rounded border border-gray-200 px-2 py-1"
+                          value={row.name}
+                          onChange={(e) =>
+                            setImportRows((rows) =>
+                              rows.map((r, i) => (i === idx ? { ...r, name: e.target.value } : r))
+                            )
+                          }
+                        />
+                      </td>
+                      <td className="px-2 py-2">
+                        <textarea
+                          className="w-full min-w-[8rem] rounded border border-gray-200 px-2 py-1"
+                          rows={2}
+                          placeholder="Optional"
+                          value={row.description ?? ''}
+                          onChange={(e) =>
+                            setImportRows((rows) =>
+                              rows.map((r, i) => (i === idx ? { ...r, description: e.target.value || null } : r))
+                            )
+                          }
+                        />
+                      </td>
+                      <td className="px-2 py-2">
+                        <select
+                          className="w-full max-w-[10rem] rounded border border-gray-200 px-2 py-1"
+                          value={row.categoryId}
+                          onChange={(e) =>
+                            setImportRows((rows) =>
+                              rows.map((r, i) =>
+                                i === idx
+                                  ? { ...r, categoryId: parseInt(e.target.value, 10), categoryMatch: 'exact' }
+                                  : r
+                              )
+                            )
+                          }
+                        >
+                          {sortedCategories.map((c) => (
+                            <option key={c.id} value={c.id}>
+                              {c.name}
+                            </option>
+                          ))}
+                        </select>
+                      </td>
+                      <td className="px-2 py-2 text-gray-600">
+                        {row.categoryMatch === 'exact'
+                          ? 'Exact'
+                          : row.categoryMatch === 'partial'
+                            ? 'Partial'
+                            : 'Guess'}
+                      </td>
+                      <td className="px-2 py-2">
+                        <select
+                          className="w-full max-w-[9rem] rounded border border-gray-200 px-1 py-1"
+                          value={row.frequencyType}
+                          onChange={(e) =>
+                            setImportRows((rows) =>
+                              rows.map((r, i) => (i === idx ? { ...r, frequencyType: e.target.value } : r))
+                            )
+                          }
+                        >
+                          {FREQUENCY_TYPES.map((f) => (
+                            <option key={f} value={f}>
+                              {FREQUENCY_LABELS[f] ?? f}
+                            </option>
+                          ))}
+                        </select>
+                      </td>
+                      <td className="px-2 py-2">
+                        <select
+                          className="w-full max-w-[6rem] rounded border border-gray-200 px-1 py-1"
+                          value={row.timeBlock}
+                          onChange={(e) =>
+                            setImportRows((rows) =>
+                              rows.map((r, i) => (i === idx ? { ...r, timeBlock: e.target.value } : r))
+                            )
+                          }
+                        >
+                          {TIME_BLOCKS.map((tb) => (
+                            <option key={tb} value={tb}>
+                              {tb}
+                            </option>
+                          ))}
+                        </select>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div className="flex flex-wrap justify-end gap-2 border-t border-gray-100 px-4 py-3 sm:px-6">
+              <button
+                type="button"
+                onClick={() => {
+                  setImportRows((rows) => rows.map((r) => ({ ...r, selected: true })));
+                }}
+                className="rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+              >
+                Select all
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setImportRows((rows) => rows.map((r) => ({ ...r, selected: false })));
+                }}
+                className="rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+              >
+                Clear selection
+              </button>
+              <button
+                type="button"
+                onClick={closeImportReview}
+                className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={importBulkSaving}
+                onClick={() => void commitImportSelected()}
+                className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+              >
+                {importBulkSaving ? 'Adding…' : `Add ${importRows.filter((r) => r.selected).length} template(s)`}
               </button>
             </div>
           </div>

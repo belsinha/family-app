@@ -58,6 +58,7 @@ model TaskTemplateAssignee {
 model TaskTemplate {
   id                   Int                    @id @default(autoincrement())
   name                 String
+  description          String?
   categoryId           Int
   category             ChoreCategory          @relation(fields: [categoryId], references: [id], onDelete: Restrict)
   frequencyType        String
