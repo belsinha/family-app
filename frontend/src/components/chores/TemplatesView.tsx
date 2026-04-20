@@ -115,10 +115,41 @@ function toggleAssignee(ids: number[], id: number, allowEmpty: boolean): number[
   return [...ids, id].sort((a, b) => a - b);
 }
 
+/** Child is assignee, or anyone-chore with no hints (whole household) or hints include this child. */
+function templateInvolvesChild(t: ChoreTemplate, memberId: number): boolean {
+  if (t.assigneeIds.includes(memberId)) return true;
+  if (!t.anyoneMayComplete) return false;
+  if (t.assigneeIds.length === 0) return true;
+  return t.assigneeIds.includes(memberId);
+}
+
+/** Whether the template is tied to a specific weekday that equals `day` (0–6). */
+function templateMatchesWeekday(t: ChoreTemplate, day: number): boolean {
+  switch (t.frequencyType) {
+    case 'WEEKLY':
+      return t.dayOfWeek === day;
+    case 'CONDITIONAL_SCHEDULE':
+      return t.conditionalDayOfWeek === day;
+    case 'MONTHLY':
+      return t.dayOfWeek == null || t.dayOfWeek === day;
+    case 'DAILY':
+    case 'EVERY_OTHER_DAY':
+    case 'SEMIANNUAL':
+      return true;
+    default:
+      return true;
+  }
+}
+
 export default function TemplatesView({ members, editorMemberId }: TemplatesViewProps) {
   const [templates, setTemplates] = useState<ChoreTemplate[]>([]);
   const [categories, setCategories] = useState<ChoreCategory[]>([]);
   const [categoryFilterId, setCategoryFilterId] = useState<number | 'all'>('all');
+  const [childFilterId, setChildFilterId] = useState<number | 'all'>('all');
+  const [weekdayFilter, setWeekdayFilter] = useState<number | 'all'>('all');
+  const [timeBlockFilter, setTimeBlockFilter] = useState<(typeof TIME_BLOCKS)[number] | 'all'>('all');
+  const [frequencyFilter, setFrequencyFilter] = useState<string | 'all'>('all');
+  const [activeFilter, setActiveFilter] = useState<'all' | 'active' | 'inactive'>('all');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
@@ -156,9 +187,25 @@ export default function TemplatesView({ members, editorMemberId }: TemplatesView
   }, [modalOpen, editingId, categories]);
 
   const filteredTemplates = useMemo(() => {
-    if (categoryFilterId === 'all') return templates;
-    return templates.filter((t) => t.categoryId === categoryFilterId);
-  }, [templates, categoryFilterId]);
+    return templates.filter((t) => {
+      if (categoryFilterId !== 'all' && t.categoryId !== categoryFilterId) return false;
+      if (childFilterId !== 'all' && !templateInvolvesChild(t, childFilterId)) return false;
+      if (weekdayFilter !== 'all' && !templateMatchesWeekday(t, weekdayFilter)) return false;
+      if (timeBlockFilter !== 'all' && t.timeBlock !== timeBlockFilter) return false;
+      if (frequencyFilter !== 'all' && t.frequencyType !== frequencyFilter) return false;
+      if (activeFilter === 'active' && !t.active) return false;
+      if (activeFilter === 'inactive' && t.active) return false;
+      return true;
+    });
+  }, [
+    templates,
+    categoryFilterId,
+    childFilterId,
+    weekdayFilter,
+    timeBlockFilter,
+    frequencyFilter,
+    activeFilter,
+  ]);
 
   const openCreate = () => {
     setEditingId(null);
@@ -260,6 +307,7 @@ export default function TemplatesView({ members, editorMemberId }: TemplatesView
   if (loading) return <p className="text-gray-600">Loading…</p>;
 
   const assignableMembers = members.filter((m) => !m.canEditChores);
+  const filterBarMembers = assignableMembers.length > 0 ? assignableMembers : members;
 
   return (
     <div className="space-y-5">
@@ -274,36 +322,147 @@ export default function TemplatesView({ members, editorMemberId }: TemplatesView
         </p>
       )}
 
-      <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end sm:justify-between">
-        <div className="flex flex-col gap-1">
-          <label htmlFor="tpl-cat-filter" className="text-xs font-medium uppercase tracking-wide text-gray-500">
-            Filter by category
-          </label>
-          <select
-            id="tpl-cat-filter"
-            value={categoryFilterId === 'all' ? 'all' : String(categoryFilterId)}
-            onChange={(e) => {
-              const v = e.target.value;
-              setCategoryFilterId(v === 'all' ? 'all' : parseInt(v, 10));
-            }}
-            className="max-w-xs rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm shadow-sm"
-          >
-            <option value="all">All categories</option>
-            {categories.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name}
-              </option>
-            ))}
-          </select>
-        </div>
-        {canEdit && (
+      <div className="flex flex-col gap-4">
+        <div className="flex flex-wrap items-end gap-3">
+          <div className="flex min-w-[10rem] flex-col gap-1">
+            <label htmlFor="tpl-cat-filter" className="text-xs font-medium uppercase tracking-wide text-gray-500">
+              Category
+            </label>
+            <select
+              id="tpl-cat-filter"
+              value={categoryFilterId === 'all' ? 'all' : String(categoryFilterId)}
+              onChange={(e) => {
+                const v = e.target.value;
+                setCategoryFilterId(v === 'all' ? 'all' : parseInt(v, 10));
+              }}
+              className="w-full max-w-[14rem] rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm shadow-sm"
+            >
+              <option value="all">All categories</option>
+              {categories.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="flex min-w-[10rem] flex-col gap-1">
+            <label htmlFor="tpl-child-filter" className="text-xs font-medium uppercase tracking-wide text-gray-500">
+              Child / person
+            </label>
+            <select
+              id="tpl-child-filter"
+              value={childFilterId === 'all' ? 'all' : String(childFilterId)}
+              onChange={(e) => {
+                const v = e.target.value;
+                setChildFilterId(v === 'all' ? 'all' : parseInt(v, 10));
+              }}
+              className="w-full max-w-[14rem] rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm shadow-sm"
+            >
+              <option value="all">Everyone</option>
+              {filterBarMembers.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.name}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="flex min-w-[9rem] flex-col gap-1">
+            <label htmlFor="tpl-day-filter" className="text-xs font-medium uppercase tracking-wide text-gray-500">
+              Day of week
+            </label>
+            <select
+              id="tpl-day-filter"
+              value={weekdayFilter === 'all' ? 'all' : String(weekdayFilter)}
+              onChange={(e) => {
+                const v = e.target.value;
+                setWeekdayFilter(v === 'all' ? 'all' : parseInt(v, 10));
+              }}
+              className="w-full max-w-[12rem] rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm shadow-sm"
+            >
+              <option value="all">Any day</option>
+              {WEEKDAY_OPTIONS.map((d) => (
+                <option key={d.v} value={d.v}>
+                  {d.label}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="flex min-w-[8rem] flex-col gap-1">
+            <label htmlFor="tpl-block-filter" className="text-xs font-medium uppercase tracking-wide text-gray-500">
+              Time of day
+            </label>
+            <select
+              id="tpl-block-filter"
+              value={timeBlockFilter}
+              onChange={(e) => setTimeBlockFilter(e.target.value as (typeof TIME_BLOCKS)[number] | 'all')}
+              className="w-full max-w-[11rem] rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm shadow-sm"
+            >
+              <option value="all">Any time</option>
+              {TIME_BLOCKS.map((tb) => (
+                <option key={tb} value={tb}>
+                  {tb === 'ANY' ? 'Any time block' : tb.charAt(0) + tb.slice(1).toLowerCase()}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="flex min-w-[10rem] flex-col gap-1">
+            <label htmlFor="tpl-freq-filter" className="text-xs font-medium uppercase tracking-wide text-gray-500">
+              How often
+            </label>
+            <select
+              id="tpl-freq-filter"
+              value={frequencyFilter}
+              onChange={(e) => setFrequencyFilter(e.target.value)}
+              className="w-full max-w-[16rem] rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm shadow-sm"
+            >
+              <option value="all">Any schedule</option>
+              {FREQUENCY_TYPES.map((f) => (
+                <option key={f} value={f}>
+                  {FREQUENCY_LABELS[f] ?? f}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="flex min-w-[8rem] flex-col gap-1">
+            <label htmlFor="tpl-active-filter" className="text-xs font-medium uppercase tracking-wide text-gray-500">
+              Status
+            </label>
+            <select
+              id="tpl-active-filter"
+              value={activeFilter}
+              onChange={(e) => setActiveFilter(e.target.value as 'all' | 'active' | 'inactive')}
+              className="w-full max-w-[11rem] rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm shadow-sm"
+            >
+              <option value="all">Active &amp; inactive</option>
+              <option value="active">Active only</option>
+              <option value="inactive">Inactive only</option>
+            </select>
+          </div>
           <button
             type="button"
-            onClick={openCreate}
-            className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-blue-700"
+            className="self-end rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-800 hover:bg-gray-50"
+            onClick={() => {
+              setCategoryFilterId('all');
+              setChildFilterId('all');
+              setWeekdayFilter('all');
+              setTimeBlockFilter('all');
+              setFrequencyFilter('all');
+              setActiveFilter('all');
+            }}
           >
-            New task template
+            Clear filters
           </button>
+        </div>
+        {canEdit && (
+          <div>
+            <button
+              type="button"
+              onClick={openCreate}
+              className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-blue-700"
+            >
+              New task template
+            </button>
+          </div>
         )}
       </div>
 
