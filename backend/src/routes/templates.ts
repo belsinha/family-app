@@ -1,4 +1,4 @@
-import { Router, Request, Response, NextFunction } from 'express';
+import { Router } from 'express';
 import multer from 'multer';
 import type { Prisma } from '@prisma/client';
 import { prisma } from '../db/prisma.js';
@@ -6,6 +6,7 @@ import { authenticate, type AuthRequest } from '../middleware/auth.js';
 import { buildImportPreview } from '../services/choreImportParse.js';
 import {
   hasFullChoresAccess,
+  requireChoreEditorOrParent,
   resolveHouseholdMemberIdForChildUser,
 } from '../services/choresAccess.js';
 import { parseChoreHouseArea } from '../constants/choreHouseArea.js';
@@ -54,23 +55,7 @@ function formatTemplate(t: TemplateWithRelations) {
   };
 }
 
-async function requireCanEditChores(req: Request, res: Response, next: NextFunction) {
-  const editorId = req.headers['x-editor-user-id'] as string | undefined;
-  if (!editorId) {
-    return res.status(403).json({
-      error: 'Only a user with edit permission can change templates. Set X-Editor-User-Id to the household member id.',
-    });
-  }
-  const id = parseInt(editorId, 10);
-  if (Number.isNaN(id)) {
-    return res.status(403).json({ error: 'Invalid X-Editor-User-Id' });
-  }
-  const member = await prisma.householdMember.findUnique({ where: { id } });
-  if (!member?.canEditChores) {
-    return res.status(403).json({ error: 'This user cannot edit task templates.' });
-  }
-  next();
-}
+const requireCanEditChores = requireChoreEditorOrParent();
 
 async function setTemplateAssignees(
   templateId: number,

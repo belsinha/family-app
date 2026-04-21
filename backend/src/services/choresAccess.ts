@@ -1,7 +1,9 @@
+import type { NextFunction, Response } from 'express';
 import { Prisma } from '@prisma/client';
 import { prisma } from '../db/prisma.js';
 import { getChildByUserId } from '../db/queries/children.js';
 import type { Role } from '../types.js';
+import type { AuthRequest } from '../middleware/auth.js';
 
 /** Only parents see the full household; `child` and `family` use the self-only chores scope. */
 export function hasFullChoresAccess(role: Role): boolean {
@@ -31,6 +33,46 @@ export async function ensureChoreTemplateEditorRole(opts?: {
       Prisma.sql`UPDATE HouseholdMember SET canEditChores = 1 WHERE lower(trim(name)) = ${login}`
     );
   }
+}
+
+/**
+ * Template/category writes require `X-Editor-User-Id` = a household member id.
+ * Members with `canEditChores` always pass. **Parents** (full chores access) also pass with any
+ * valid member id so the UI is not blocked when flags were never set on this database file.
+ */
+export function requireChoreEditorOrParent(opts?: { deniedMessage: string }) {
+  const deniedMessage =
+    opts?.deniedMessage ?? 'This user cannot edit task templates.';
+
+  return async (req: AuthRequest, res: Response, next: NextFunction): Promise<void> => {
+    if (!req.user) {
+      res.status(401).json({ error: 'Authentication required' });
+      return;
+    }
+    const editorId = req.headers['x-editor-user-id'] as string | undefined;
+    if (!editorId) {
+      res.status(403).json({
+        error:
+          'Set X-Editor-User-Id to a household member id (the person acting as editor for this change).',
+      });
+      return;
+    }
+    const id = parseInt(editorId, 10);
+    if (Number.isNaN(id)) {
+      res.status(403).json({ error: 'Invalid X-Editor-User-Id' });
+      return;
+    }
+    const member = await prisma.householdMember.findUnique({ where: { id } });
+    if (!member) {
+      res.status(403).json({ error: 'Invalid X-Editor-User-Id' });
+      return;
+    }
+    if (member.canEditChores || hasFullChoresAccess(req.user.role)) {
+      next();
+      return;
+    }
+    res.status(403).json({ error: deniedMessage });
+  };
 }
 
 /**

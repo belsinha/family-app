@@ -83,8 +83,25 @@ export default function ChoresApp() {
   }, [members, memberFromUrl, tabFromUrl, isChoresSelfOnly]);
 
   const editorMemberId = useMemo(() => {
-    return resolveChoreEditorMemberIdForParentUi(members, user?.name, user?.role === 'parent');
-  }, [user?.name, user?.role, members]);
+    if (isChoresSelfOnly || members.length === 0) {
+      return null;
+    }
+    const resolved = resolveChoreEditorMemberIdForParentUi(
+      members,
+      user?.name,
+      user?.role === 'parent'
+    );
+    if (resolved != null) {
+      return resolved;
+    }
+    // Chores DB may have no canEditChores flags; backend still allows parents with any valid member id.
+    const editors = members.filter((m) => m.canEditChores).sort((a, b) => a.id - b.id);
+    if (editors.length > 0) {
+      return editors[0].id;
+    }
+    const sorted = [...members].sort((a, b) => a.id - b.id);
+    return sorted[0]?.id ?? null;
+  }, [isChoresSelfOnly, members, user?.name, user?.role]);
 
   if (loading) {
     return (

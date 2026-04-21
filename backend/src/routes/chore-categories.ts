@@ -1,26 +1,13 @@
-import { Router, Request, Response, NextFunction } from 'express';
+import { Router } from 'express';
 import { prisma } from '../db/prisma.js';
 import { authenticate, type AuthRequest } from '../middleware/auth.js';
+import { requireChoreEditorOrParent } from '../services/choresAccess.js';
 
 const router = Router();
 
-async function requireCanEditChores(req: Request, res: Response, next: NextFunction) {
-  const editorId = req.headers['x-editor-user-id'] as string | undefined;
-  if (!editorId) {
-    return res.status(403).json({
-      error: 'Set X-Editor-User-Id to the household member id that can edit chores.',
-    });
-  }
-  const id = parseInt(editorId, 10);
-  if (Number.isNaN(id)) {
-    return res.status(403).json({ error: 'Invalid X-Editor-User-Id' });
-  }
-  const member = await prisma.householdMember.findUnique({ where: { id } });
-  if (!member?.canEditChores) {
-    return res.status(403).json({ error: 'This user cannot edit categories.' });
-  }
-  next();
-}
+const requireCanEditChores = requireChoreEditorOrParent({
+  deniedMessage: 'This user cannot edit categories.',
+});
 
 router.get('/', authenticate, async (req: AuthRequest, res, next) => {
   try {
