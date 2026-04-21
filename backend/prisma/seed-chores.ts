@@ -4,6 +4,47 @@ const prisma = new PrismaClient();
 
 const DAY = { SUN: 0, MON: 1, TUE: 2, WED: 3, THU: 4, FRI: 5, SAT: 6 };
 
+/** Maps seed category names to TaskTemplate.houseArea codes (see choreHouseArea constants). */
+function defaultHouseArea(category: string): string {
+  switch (category) {
+    case 'Kitchen':
+      return 'KITCHEN';
+    case 'Bathroom':
+      return 'BATHROOM';
+    case 'Bedrooms':
+      return 'BEDROOM';
+    case 'Laundry':
+      return 'LAUNDRY';
+    case 'Shared Areas':
+      return 'LIVING';
+    case 'Trash':
+      return 'OUTDOOR';
+    case 'Pet Care':
+      return 'OTHER';
+    case 'Household Maintenance':
+      return 'OTHER';
+    default:
+      return 'NONE';
+  }
+}
+
+type SeedMember = 'Celiane' | 'Isabel' | 'Nicholas' | 'Laura';
+
+type SeedTemplate = {
+  name: string;
+  category: string;
+  assignedTo: SeedMember;
+  frequencyType: string;
+  timeBlock: string;
+  dayOfWeek?: number;
+  weekOfMonth?: number;
+  semiannualMonths?: string;
+  conditionalDayOfWeek?: number;
+  conditionalAfterTime?: string;
+  /** Optional override; otherwise derived from category */
+  houseArea?: string;
+};
+
 async function main() {
   const celiane = await prisma.householdMember.upsert({
     where: { id: 1 },
@@ -27,7 +68,7 @@ async function main() {
   });
   const members = { Celiane: celiane, Isabel: isabel, Nicholas: nicholas, Laura: laura };
 
-  const templates = [
+  const templates: SeedTemplate[] = [
     { name: 'Walk Toby (Morning)', category: 'Pet Care', assignedTo: 'Laura', frequencyType: 'DAILY', timeBlock: 'MORNING' },
     { name: 'Walk Toby (Afternoon)', category: 'Pet Care', assignedTo: 'Isabel', frequencyType: 'DAILY', timeBlock: 'AFTERNOON' },
     { name: 'Walk Toby (Night, Safety)', category: 'Pet Care', assignedTo: 'Nicholas', frequencyType: 'DAILY', timeBlock: 'NIGHT' },
@@ -77,52 +118,78 @@ async function main() {
     { name: 'Empty bedroom trash', category: 'Trash', assignedTo: 'Laura', frequencyType: 'WEEKLY', dayOfWeek: DAY.TUE, timeBlock: 'NIGHT' },
   ];
 
-  const existingCount = await prisma.taskTemplate.count();
-  if (existingCount >= templates.length) {
-    console.log('Chores seed: templates already present, skipping.');
-  } else {
-    const distinctCategories = [...new Set(templates.map((x) => x.category))];
-    let order = 0;
-    for (const name of distinctCategories) {
-      await prisma.choreCategory.upsert({
-        where: { name },
-        create: { name, sortOrder: order++ },
-        update: {},
-      });
-    }
-
-    const allCats = await prisma.choreCategory.findMany();
-    const categoryIdByName = new Map(allCats.map((c) => [c.name, c.id]));
-
-    await prisma.taskTemplate.deleteMany({});
-
-    for (const t of templates) {
-      const categoryId = categoryIdByName.get(t.category);
-      if (categoryId == null) {
-        throw new Error(`Missing category: ${t.category}`);
-      }
-      const assignedToId = members[t.assignedTo as keyof typeof members].id;
-      const created = await prisma.taskTemplate.create({
-        data: {
-          name: t.name,
-          categoryId,
-          frequencyType: t.frequencyType,
-          dayOfWeek: 'dayOfWeek' in t ? t.dayOfWeek : null,
-          weekOfMonth: 'weekOfMonth' in t ? t.weekOfMonth : null,
-          semiannualMonths: 'semiannualMonths' in t ? t.semiannualMonths : null,
-          conditionalDayOfWeek: 'conditionalDayOfWeek' in t ? t.conditionalDayOfWeek : null,
-          conditionalAfterTime: 'conditionalAfterTime' in t ? t.conditionalAfterTime : null,
-          timeBlock: t.timeBlock,
-          pointsBase: 1,
-          active: true,
-        },
-      });
-      await prisma.taskTemplateAssignee.create({
-        data: { templateId: created.id, householdMemberId: assignedToId },
-      });
-    }
+  const distinctCategories = [...new Set(templates.map((x) => x.category))];
+  let order = 0;
+  for (const name of distinctCategories) {
+    await prisma.choreCategory.upsert({
+      where: { name },
+      create: { name, sortOrder: order++ },
+      update: {},
+    });
   }
-  console.log('Chores seed: household members and task templates ready.');
+
+  const allCats = await prisma.choreCategory.findMany();
+  const categoryIdByName = new Map(allCats.map((c) => [c.name, c.id]));
+
+  if (process.env.CHORES_SEED_RESET === '1') {
+    console.warn(
+      '[chores seed] CHORES_SEED_RESET=1: deleting all task templates (cascades to task instances). This run will then re-insert any missing canonical rows.'
+    );
+    await prisma.taskTemplate.deleteMany({});
+  }
+
+  let inserted = 0;
+  for (const t of templates) {
+    const categoryId = categoryIdByName.get(t.category);
+    if (categoryId == null) {
+      throw new Error(`Missing category: ${t.category}`);
+    }
+    const assignedToId = members[t.assignedTo].id;
+
+    const exists = await prisma.taskTemplate.findFirst({
+      where: {
+        name: t.name,
+        categoryId,
+        assignees: { some: { householdMemberId: assignedToId } },
+      },
+    });
+    if (exists) continue;
+
+    const houseArea = t.houseArea ?? defaultHouseArea(t.category);
+
+    const created = await prisma.taskTemplate.create({
+      data: {
+        name: t.name,
+        categoryId,
+        houseArea,
+        frequencyType: t.frequencyType,
+        dayOfWeek: t.dayOfWeek ?? null,
+        weekOfMonth: t.weekOfMonth ?? null,
+        dayOfMonth: null,
+        semiannualMonths: t.semiannualMonths ?? null,
+        conditionalDayOfWeek: t.conditionalDayOfWeek ?? null,
+        conditionalAfterTime: t.conditionalAfterTime ?? null,
+        timeBlock: t.timeBlock,
+        pointsBase: 1,
+        active: true,
+        anyoneMayComplete: false,
+      },
+    });
+    await prisma.taskTemplateAssignee.create({
+      data: { templateId: created.id, householdMemberId: assignedToId },
+    });
+    inserted += 1;
+  }
+
+  const total = await prisma.taskTemplate.count();
+  console.log(
+    `Chores seed: household members ready; merged ${inserted} missing canonical template(s); ${total} template(s) total.`
+  );
+  if (inserted > 0 && process.env.CHORES_SEED_RESET !== '1') {
+    console.log(
+      '(No templates were removed. Missing rows were added only. To wipe all templates and instances first, set CHORES_SEED_RESET=1 for that seed run.)'
+    );
+  }
 }
 
 main()
