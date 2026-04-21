@@ -378,10 +378,10 @@ export default function TemplatesView({ members, editorMemberId }: TemplatesView
           frequencyType: row.frequencyType,
           dayOfWeek: row.frequencyType === 'WEEKLY' ? row.dayOfWeek ?? null : null,
           weekOfMonth: row.frequencyType === 'MONTHLY' ? row.weekOfMonth ?? null : null,
-          dayOfMonth: null,
+      dayOfMonth: null,
           semiannualMonths: row.frequencyType === 'SEMIANNUAL' ? '[1,7]' : null,
-          conditionalDayOfWeek: null,
-          conditionalAfterTime: null,
+      conditionalDayOfWeek: null,
+      conditionalAfterTime: null,
           timeBlock: row.timeBlock,
           pointsBase: 1,
           active: true,
@@ -722,15 +722,15 @@ export default function TemplatesView({ members, editorMemberId }: TemplatesView
             Clear filters
           </button>
         </div>
-        {canEdit && (
+      {canEdit && (
           <div className="flex flex-wrap items-center gap-2">
-            <button
-              type="button"
-              onClick={openCreate}
+          <button
+            type="button"
+            onClick={openCreate}
               className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-blue-700"
-            >
+          >
               New task template
-            </button>
+          </button>
             <button
               type="button"
               disabled={importParsing}
@@ -749,11 +749,11 @@ export default function TemplatesView({ members, editorMemberId }: TemplatesView
                 e.target.value = '';
               }}
             />
-          </div>
-        )}
+        </div>
+      )}
       </div>
 
-      {canEdit && (
+              {canEdit && (
         <section className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
           <h3 className="text-sm font-semibold text-gray-900">Categories</h3>
           <p className="mt-1 text-xs text-gray-600">
@@ -904,7 +904,7 @@ export default function TemplatesView({ members, editorMemberId }: TemplatesView
                       onChange={() => toggleTemplateSelected(t.id)}
                       aria-label={`Select ${t.name}`}
                     />
-                  </td>
+                </td>
                 )}
                 <td className="px-3 py-2 text-gray-900">
                   <div className="font-medium">{t.name}</div>
@@ -1048,10 +1048,10 @@ export default function TemplatesView({ members, editorMemberId }: TemplatesView
                     {CHORE_HOUSE_AREAS.map((code) => (
                       <option key={code} value={code}>
                         {CHORE_HOUSE_AREA_LABELS[code]}
-                      </option>
-                    ))}
-                  </select>
-                </div>
+                    </option>
+                  ))}
+                </select>
+              </div>
                 <div className="mt-3 flex flex-wrap gap-2">
                   <input
                     type="text"
@@ -1163,15 +1163,15 @@ export default function TemplatesView({ members, editorMemberId }: TemplatesView
 
               {draft.frequencyType === 'MONTHLY' && (
                 <div className="grid gap-3 sm:grid-cols-2">
-                  <div>
+                <div>
                     <label className="text-sm font-medium text-gray-800">Week of month (1–4)</label>
-                    <input
+                  <input
                       className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
                       placeholder="e.g. 1 for first week"
-                      value={draft.weekOfMonth}
-                      onChange={(e) => setDraft((d) => ({ ...d, weekOfMonth: e.target.value }))}
-                    />
-                  </div>
+                    value={draft.weekOfMonth}
+                    onChange={(e) => setDraft((d) => ({ ...d, weekOfMonth: e.target.value }))}
+                  />
+                </div>
                   <div>
                     <label className="text-sm font-medium text-gray-800">Or day of month (1–31)</label>
                     <input
@@ -1180,12 +1180,12 @@ export default function TemplatesView({ members, editorMemberId }: TemplatesView
                       value={draft.dayOfMonth}
                       onChange={(e) => setDraft((d) => ({ ...d, dayOfMonth: e.target.value }))}
                     />
-                  </div>
+              </div>
                 </div>
               )}
 
               {draft.frequencyType === 'SEMIANNUAL' && (
-                <div>
+              <div>
                   <label className="text-sm font-medium text-gray-800">Months (JSON array, 1=Jan)</label>
                   <input
                     className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 font-mono text-sm"
@@ -1200,7 +1200,7 @@ export default function TemplatesView({ members, editorMemberId }: TemplatesView
                 <div className="grid gap-3 sm:grid-cols-2">
                   <div>
                     <label className="text-sm font-medium text-gray-800">Weekday</label>
-                    <select
+                <select
                       className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
                       value={draft.conditionalDayOfWeek}
                       onChange={(e) => setDraft((d) => ({ ...d, conditionalDayOfWeek: e.target.value }))}
