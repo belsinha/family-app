@@ -45,28 +45,51 @@ type SeedTemplate = {
   houseArea?: string;
 };
 
+/** Editor flag must follow the person named Celiane, not a fixed row id. */
+async function ensureCelianeCanEditTemplates(): Promise<void> {
+  await prisma.$executeRawUnsafe(
+    `UPDATE HouseholdMember SET canEditChores = 1 WHERE lower(trim(name)) = 'celiane'`
+  );
+}
+
 async function main() {
-  const celiane = await prisma.householdMember.upsert({
+  await prisma.householdMember.upsert({
     where: { id: 1 },
     create: { name: 'Celiane', canEditChores: true },
     update: { canEditChores: true },
   });
-  const isabel = await prisma.householdMember.upsert({
+  await prisma.householdMember.upsert({
     where: { id: 2 },
     create: { name: 'Isabel', canEditChores: false },
     update: {},
   });
-  const nicholas = await prisma.householdMember.upsert({
+  await prisma.householdMember.upsert({
     where: { id: 3 },
     create: { name: 'Nicholas', canEditChores: false },
     update: {},
   });
-  const laura = await prisma.householdMember.upsert({
+  await prisma.householdMember.upsert({
     where: { id: 4 },
     create: { name: 'Laura', canEditChores: false },
     update: {},
   });
-  const members = { Celiane: celiane, Isabel: isabel, Nicholas: nicholas, Laura: laura };
+  await ensureCelianeCanEditTemplates();
+
+  const byLowerName = async (canonical: string) => {
+    const list = await prisma.householdMember.findMany({ orderBy: { id: 'asc' } });
+    const hit = list.find((m) => m.name.trim().toLowerCase() === canonical.toLowerCase());
+    if (!hit) {
+      throw new Error(`Chores seed: missing household member named "${canonical}"`);
+    }
+    return hit;
+  };
+
+  const members = {
+    Celiane: await byLowerName('Celiane'),
+    Isabel: await byLowerName('Isabel'),
+    Nicholas: await byLowerName('Nicholas'),
+    Laura: await byLowerName('Laura'),
+  };
 
   const templates: SeedTemplate[] = [
     { name: 'Walk Toby (Morning)', category: 'Pet Care', assignedTo: 'Laura', frequencyType: 'DAILY', timeBlock: 'MORNING' },
