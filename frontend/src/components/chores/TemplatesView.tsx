@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef, useLayoutEffect } from 'react';
 import {
   api,
   type ChoreTemplate,
@@ -180,6 +180,9 @@ export default function TemplatesView({ members, editorMemberId }: TemplatesView
   const [importParseMessage, setImportParseMessage] = useState<string | null>(null);
   const [renamingCategoryId, setRenamingCategoryId] = useState<number | null>(null);
   const [renamingCategoryValue, setRenamingCategoryValue] = useState('');
+  const [selectedTemplateIds, setSelectedTemplateIds] = useState<Set<number>>(() => new Set());
+  const [bulkBusy, setBulkBusy] = useState(false);
+  const selectAllFilteredRef = useRef<HTMLInputElement>(null);
 
   const canEdit = editorMemberId != null;
 
@@ -198,6 +201,20 @@ export default function TemplatesView({ members, editorMemberId }: TemplatesView
   useEffect(() => {
     loadAll();
   }, []);
+
+  useEffect(() => {
+    const valid = new Set(templates.map((t) => t.id));
+    setSelectedTemplateIds((prev) => {
+      let changed = false;
+      const next = new Set<number>();
+      prev.forEach((id) => {
+        if (valid.has(id)) next.add(id);
+        else changed = true;
+      });
+      if (!changed && next.size === prev.size) return prev;
+      return next;
+    });
+  }, [templates]);
 
   useEffect(() => {
     if (!modalOpen || editingId != null) return;
@@ -236,6 +253,16 @@ export default function TemplatesView({ members, editorMemberId }: TemplatesView
     frequencyFilter,
     activeFilter,
   ]);
+
+  const allFilteredSelected =
+    filteredTemplates.length > 0 && filteredTemplates.every((t) => selectedTemplateIds.has(t.id));
+  const someFilteredSelected = filteredTemplates.some((t) => selectedTemplateIds.has(t.id));
+
+  useLayoutEffect(() => {
+    const el = selectAllFilteredRef.current;
+    if (!el) return;
+    el.indeterminate = someFilteredSelected && !allFilteredSelected;
+  }, [someFilteredSelected, allFilteredSelected]);
 
   const openCreate = () => {
     setEditingId(null);
@@ -433,9 +460,78 @@ export default function TemplatesView({ members, editorMemberId }: TemplatesView
     setError(null);
     try {
       await api.deleteTemplate(id, editorMemberId);
+      setSelectedTemplateIds((prev) => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
       loadAll();
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Delete failed');
+    }
+  };
+
+  const toggleTemplateSelected = (id: number) => {
+    setSelectedTemplateIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleSelectAllFiltered = () => {
+    setSelectedTemplateIds((prev) => {
+      const next = new Set(prev);
+      const ids = filteredTemplates.map((t) => t.id);
+      const allOn = ids.length > 0 && ids.every((id) => next.has(id));
+      if (allOn) ids.forEach((id) => next.delete(id));
+      else ids.forEach((id) => next.add(id));
+      return next;
+    });
+  };
+
+  const handleBulkDelete = async () => {
+    if (!canEdit || editorMemberId == null) return;
+    const ids = [...selectedTemplateIds];
+    if (ids.length === 0) return;
+    if (
+      !window.confirm(
+        `Delete ${ids.length} selected template${ids.length !== 1 ? 's' : ''}? This removes their schedules and task history.`
+      )
+    ) {
+      return;
+    }
+    setBulkBusy(true);
+    setError(null);
+    try {
+      for (const id of ids) {
+        await api.deleteTemplate(id, editorMemberId);
+      }
+      setSelectedTemplateIds(new Set());
+      loadAll();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Bulk delete failed');
+    } finally {
+      setBulkBusy(false);
+    }
+  };
+
+  const handleBulkSetActive = async (active: boolean) => {
+    if (!canEdit || editorMemberId == null) return;
+    const ids = [...selectedTemplateIds];
+    if (ids.length === 0) return;
+    setBulkBusy(true);
+    setError(null);
+    try {
+      for (const id of ids) {
+        await api.updateTemplate(id, { active }, editorMemberId);
+      }
+      loadAll();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Update failed');
+    } finally {
+      setBulkBusy(false);
     }
   };
 
@@ -703,10 +799,71 @@ export default function TemplatesView({ members, editorMemberId }: TemplatesView
         Showing {filteredTemplates.length} of {templates.length} template{templates.length !== 1 ? 's' : ''}.
       </p>
 
+      {canEdit && selectedTemplateIds.size > 0 && (
+        <div className="flex flex-wrap items-center gap-2 rounded-lg border border-blue-200 bg-blue-50/90 px-3 py-2 text-sm text-blue-950">
+          <span className="font-medium">
+            {selectedTemplateIds.size} selected
+            {filteredTemplates.some((t) => selectedTemplateIds.has(t.id)) && (
+              <span className="font-normal text-blue-800">
+                {' '}
+                ({filteredTemplates.filter((t) => selectedTemplateIds.has(t.id)).length} visible with current filters)
+              </span>
+            )}
+          </span>
+          <button
+            type="button"
+            disabled={bulkBusy}
+            onClick={() => void handleBulkSetActive(true)}
+            className="rounded-md border border-blue-300 bg-white px-2.5 py-1 text-xs font-medium text-blue-900 hover:bg-blue-100 disabled:opacity-50"
+          >
+            Set active
+          </button>
+          <button
+            type="button"
+            disabled={bulkBusy}
+            onClick={() => void handleBulkSetActive(false)}
+            className="rounded-md border border-blue-300 bg-white px-2.5 py-1 text-xs font-medium text-blue-900 hover:bg-blue-100 disabled:opacity-50"
+          >
+            Set inactive
+          </button>
+          <button
+            type="button"
+            disabled={bulkBusy}
+            onClick={() => void handleBulkDelete()}
+            className="rounded-md bg-red-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-red-700 disabled:opacity-50"
+          >
+            Delete selected…
+          </button>
+          <button
+            type="button"
+            disabled={bulkBusy}
+            onClick={() => setSelectedTemplateIds(new Set())}
+            className="rounded-md px-2 py-1 text-xs font-medium text-blue-800 hover:underline disabled:opacity-50"
+          >
+            Clear selection
+          </button>
+        </div>
+      )}
+
       <div className="overflow-x-auto rounded-lg border border-gray-200 shadow-sm">
         <table className="min-w-full divide-y divide-gray-200 text-sm">
           <thead className="bg-gray-50">
             <tr>
+              {canEdit && (
+                <th className="w-10 px-2 py-2 text-center font-semibold text-gray-900" scope="col">
+                  <span className="sr-only">Select</span>
+                  <input
+                    ref={selectAllFilteredRef}
+                    type="checkbox"
+                    className="h-4 w-4 rounded border-gray-300"
+                    disabled={filteredTemplates.length === 0 || bulkBusy}
+                    checked={allFilteredSelected}
+                    onChange={() => toggleSelectAllFiltered()}
+                    title="Select or clear all templates in the current filtered list"
+                    aria-label="Select all templates in filtered list"
+                  />
+                </th>
+              )}
               <th className="px-3 py-2 text-left font-semibold text-gray-900">Task</th>
               <th className="px-3 py-2 text-left font-semibold text-gray-900">Category</th>
               <th className="px-3 py-2 text-left font-semibold text-gray-900">Area</th>
@@ -720,6 +877,18 @@ export default function TemplatesView({ members, editorMemberId }: TemplatesView
           <tbody className="divide-y divide-gray-100 bg-white">
             {filteredTemplates.map((t) => (
               <tr key={t.id} className="hover:bg-gray-50/80">
+                {canEdit && (
+                  <td className="w-10 px-2 py-2 text-center align-top">
+                    <input
+                      type="checkbox"
+                      className="h-4 w-4 rounded border-gray-300"
+                      disabled={bulkBusy}
+                      checked={selectedTemplateIds.has(t.id)}
+                      onChange={() => toggleTemplateSelected(t.id)}
+                      aria-label={`Select ${t.name}`}
+                    />
+                  </td>
+                )}
                 <td className="px-3 py-2 text-gray-900">
                   <div className="font-medium">{t.name}</div>
                   {t.description ? (
