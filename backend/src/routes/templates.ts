@@ -8,6 +8,7 @@ import {
   hasFullChoresAccess,
   resolveHouseholdMemberIdForChildUser,
 } from '../services/choresAccess.js';
+import { parseChoreHouseArea } from '../constants/choreHouseArea.js';
 
 const router = Router();
 
@@ -42,6 +43,7 @@ function formatTemplate(t: TemplateWithRelations) {
     pointsBase: t.pointsBase,
     active: t.active,
     anyoneMayComplete: t.anyoneMayComplete,
+    houseArea: t.houseArea,
     assignees: t.assignees.map((a) => ({
       householdMemberId: a.householdMemberId,
       member: a.member,
@@ -196,6 +198,7 @@ router.post('/', authenticate, requireCanEditChores, async (req, res, next) => {
       return res.status(400).json({ error: 'Invalid categoryId' });
     }
     const anyoneMayComplete = body.anyoneMayComplete === true;
+    const houseArea = parseChoreHouseArea(body.houseArea);
     const assigneeIdsRaw = body.assigneeIds ?? body.assignedToId;
     const assigneeIds: number[] = Array.isArray(assigneeIdsRaw)
       ? assigneeIdsRaw.map((x) => Number(x)).filter((n) => Number.isInteger(n))
@@ -225,6 +228,7 @@ router.post('/', authenticate, requireCanEditChores, async (req, res, next) => {
                 : null,
             categoryId,
             anyoneMayComplete,
+            houseArea,
             frequencyType: String(body.frequencyType ?? 'DAILY'),
             dayOfWeek: body.dayOfWeek != null ? Number(body.dayOfWeek) : null,
             weekOfMonth: body.weekOfMonth != null ? Number(body.weekOfMonth) : null,
@@ -324,6 +328,7 @@ router.put('/:id', authenticate, requireCanEditChores, async (req, res, next) =>
         ...(body.anyoneMayComplete !== undefined && {
           anyoneMayComplete: Boolean(body.anyoneMayComplete),
         }),
+        ...(body.houseArea !== undefined && { houseArea: parseChoreHouseArea(body.houseArea) }),
       },
       include: templateInclude,
     });

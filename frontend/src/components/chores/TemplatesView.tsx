@@ -7,6 +7,12 @@ import {
   type ChoreTemplateSavePayload,
   type TemplateImportPreviewItem,
 } from '../../utils/api';
+import {
+  CHORE_HOUSE_AREAS,
+  CHORE_HOUSE_AREA_LABELS,
+  normalizeHouseArea,
+  type ChoreHouseAreaCode,
+} from '../../constants/choreHouseArea';
 
 const FREQUENCY_TYPES = [
   'DAILY',
@@ -47,6 +53,7 @@ type Draft = {
   name: string;
   description: string;
   categoryId: number | null;
+  houseArea: ChoreHouseAreaCode;
   assigneeIds: number[];
   anyoneMayComplete: boolean;
   frequencyType: string;
@@ -66,6 +73,7 @@ function templateToDraft(t: ChoreTemplate): Draft {
     name: t.name,
     description: t.description?.trim() ?? '',
     categoryId: t.categoryId,
+    houseArea: normalizeHouseArea(t.houseArea),
     assigneeIds: [...t.assigneeIds],
     anyoneMayComplete: t.anyoneMayComplete === true,
     frequencyType: t.frequencyType,
@@ -89,6 +97,7 @@ function emptyDraft(categories: ChoreCategory[], members: ChoreHouseholdMember[]
     name: '',
     description: '',
     categoryId: firstCat,
+    houseArea: 'NONE',
     assigneeIds: defaultAssignees,
     anyoneMayComplete: false,
     frequencyType: 'DAILY',
@@ -149,6 +158,7 @@ export default function TemplatesView({ members, editorMemberId }: TemplatesView
   const [templates, setTemplates] = useState<ChoreTemplate[]>([]);
   const [categories, setCategories] = useState<ChoreCategory[]>([]);
   const [categoryFilterId, setCategoryFilterId] = useState<number | 'all'>('all');
+  const [houseAreaFilter, setHouseAreaFilter] = useState<ChoreHouseAreaCode | 'all'>('all');
   const [childFilterId, setChildFilterId] = useState<number | 'all'>('all');
   const [weekdayFilter, setWeekdayFilter] = useState<number | 'all'>('all');
   const [timeBlockFilter, setTimeBlockFilter] = useState<(typeof TIME_BLOCKS)[number] | 'all'>('all');
@@ -207,6 +217,7 @@ export default function TemplatesView({ members, editorMemberId }: TemplatesView
   const filteredTemplates = useMemo(() => {
     return templates.filter((t) => {
       if (categoryFilterId !== 'all' && t.categoryId !== categoryFilterId) return false;
+      if (houseAreaFilter !== 'all' && normalizeHouseArea(t.houseArea) !== houseAreaFilter) return false;
       if (childFilterId !== 'all' && !templateInvolvesChild(t, childFilterId)) return false;
       if (weekdayFilter !== 'all' && !templateMatchesWeekday(t, weekdayFilter)) return false;
       if (timeBlockFilter !== 'all' && t.timeBlock !== timeBlockFilter) return false;
@@ -218,6 +229,7 @@ export default function TemplatesView({ members, editorMemberId }: TemplatesView
   }, [
     templates,
     categoryFilterId,
+    houseAreaFilter,
     childFilterId,
     weekdayFilter,
     timeBlockFilter,
@@ -309,6 +321,7 @@ export default function TemplatesView({ members, editorMemberId }: TemplatesView
           name,
           description: row.description?.trim() || null,
           categoryId: row.categoryId,
+          houseArea: 'NONE',
           assigneeIds: defaultAssignees,
           anyoneMayComplete: false,
           frequencyType: row.frequencyType,
@@ -374,6 +387,7 @@ export default function TemplatesView({ members, editorMemberId }: TemplatesView
       name: draft.name.trim(),
       description: draft.description.trim() || null,
       categoryId: draft.categoryId,
+      houseArea: draft.houseArea,
       assigneeIds: draft.assigneeIds,
       anyoneMayComplete: draft.anyoneMayComplete,
       frequencyType: draft.frequencyType,
@@ -462,6 +476,26 @@ export default function TemplatesView({ members, editorMemberId }: TemplatesView
               {sortedCategories.map((c) => (
                 <option key={c.id} value={c.id}>
                   {c.name}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="flex min-w-[10rem] flex-col gap-1">
+            <label htmlFor="tpl-area-filter" className="text-xs font-medium uppercase tracking-wide text-gray-500">
+              House area
+            </label>
+            <select
+              id="tpl-area-filter"
+              value={houseAreaFilter}
+              onChange={(e) =>
+                setHouseAreaFilter(e.target.value === 'all' ? 'all' : (e.target.value as ChoreHouseAreaCode))
+              }
+              className="w-full max-w-[16rem] rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm shadow-sm"
+            >
+              <option value="all">All areas</option>
+              {CHORE_HOUSE_AREAS.map((code) => (
+                <option key={code} value={code}>
+                  {CHORE_HOUSE_AREA_LABELS[code]}
                 </option>
               ))}
             </select>
@@ -564,6 +598,7 @@ export default function TemplatesView({ members, editorMemberId }: TemplatesView
             className="self-end rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-800 hover:bg-gray-50"
             onClick={() => {
               setCategoryFilterId('all');
+              setHouseAreaFilter('all');
               setChildFilterId('all');
               setWeekdayFilter('all');
               setTimeBlockFilter('all');
@@ -674,6 +709,7 @@ export default function TemplatesView({ members, editorMemberId }: TemplatesView
             <tr>
               <th className="px-3 py-2 text-left font-semibold text-gray-900">Task</th>
               <th className="px-3 py-2 text-left font-semibold text-gray-900">Category</th>
+              <th className="px-3 py-2 text-left font-semibold text-gray-900">Area</th>
               <th className="px-3 py-2 text-left font-semibold text-gray-900">Who</th>
               <th className="px-3 py-2 text-left font-semibold text-gray-900">Schedule</th>
               <th className="px-3 py-2 text-left font-semibold text-gray-900">When</th>
@@ -691,6 +727,11 @@ export default function TemplatesView({ members, editorMemberId }: TemplatesView
                   ) : null}
                 </td>
                 <td className="px-3 py-2 text-gray-700">{t.category.name}</td>
+                <td className="px-3 py-2 text-gray-700">
+                  {normalizeHouseArea(t.houseArea) === 'NONE'
+                    ? '—'
+                    : CHORE_HOUSE_AREA_LABELS[normalizeHouseArea(t.houseArea)]}
+                </td>
                 <td className="px-3 py-2 text-gray-700">
                   {t.anyoneMayComplete ? (
                     <span>
@@ -800,6 +841,31 @@ export default function TemplatesView({ members, editorMemberId }: TemplatesView
                     </option>
                   ))}
                 </select>
+                <div className="mt-3">
+                  <label htmlFor="tpl-house-area" className="text-sm font-medium text-gray-800">
+                    House area
+                  </label>
+                  <p className="mt-0.5 text-xs text-gray-500">
+                    Where this chore happens (separate from category). Used for grouping and filters.
+                  </p>
+                  <select
+                    id="tpl-house-area"
+                    className="mt-2 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm shadow-sm"
+                    value={draft.houseArea}
+                    onChange={(e) =>
+                      setDraft((d) => ({
+                        ...d,
+                        houseArea: normalizeHouseArea(e.target.value),
+                      }))
+                    }
+                  >
+                    {CHORE_HOUSE_AREAS.map((code) => (
+                      <option key={code} value={code}>
+                        {CHORE_HOUSE_AREA_LABELS[code]}
+                      </option>
+                    ))}
+                  </select>
+                </div>
                 <div className="mt-3 flex flex-wrap gap-2">
                   <input
                     type="text"

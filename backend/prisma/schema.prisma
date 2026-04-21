@@ -61,6 +61,7 @@ model TaskTemplate {
   description          String?
   categoryId           Int
   category             ChoreCategory          @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  houseArea            String                 @default("NONE")
   frequencyType        String
   dayOfWeek            Int?
   weekOfMonth          Int?

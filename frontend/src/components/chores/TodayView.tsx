@@ -6,6 +6,12 @@ import {
   type ChoreCategory,
 } from '../../utils/api';
 import { useAuth } from '../../contexts/AuthContext';
+import {
+  CHORE_HOUSE_AREAS,
+  CHORE_HOUSE_AREA_LABELS,
+  normalizeHouseArea,
+  type ChoreHouseAreaCode,
+} from '../../constants/choreHouseArea';
 
 const TIME_ORDER = ['MORNING', 'AFTERNOON', 'NIGHT', 'ANY'];
 
@@ -76,6 +82,7 @@ export default function TodayView({ selectedUserId, members }: TodayViewProps) {
   const [instances, setInstances] = useState<ChoreTaskInstance[]>([]);
   const [categories, setCategories] = useState<ChoreCategory[]>([]);
   const [categoryFilterId, setCategoryFilterId] = useState<number | 'all'>('all');
+  const [houseAreaFilter, setHouseAreaFilter] = useState<ChoreHouseAreaCode | 'all'>('all');
   const [pendingExcuses, setPendingExcuses] = useState<ChoreTaskInstance[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -115,9 +122,14 @@ export default function TodayView({ selectedUserId, members }: TodayViewProps) {
   }, [date, selectedUserId]);
 
   const filteredInstances = useMemo(() => {
-    if (categoryFilterId === 'all') return instances;
-    return instances.filter((i) => i.template.categoryId === categoryFilterId);
-  }, [instances, categoryFilterId]);
+    return instances.filter((i) => {
+      if (categoryFilterId !== 'all' && i.template.categoryId !== categoryFilterId) return false;
+      if (houseAreaFilter !== 'all' && normalizeHouseArea(i.template.houseArea) !== houseAreaFilter) {
+        return false;
+      }
+      return true;
+    });
+  }, [instances, categoryFilterId, houseAreaFilter]);
 
   const refreshAfterExcuseDecision = async () => {
     await loadPendingExcuses();
@@ -298,12 +310,32 @@ export default function TodayView({ selectedUserId, members }: TodayViewProps) {
             </select>
           </div>
         )}
+        <div>
+          <label htmlFor="today-area" className="block text-sm font-medium text-gray-700">
+            House area
+          </label>
+          <select
+            id="today-area"
+            value={houseAreaFilter}
+            onChange={(e) =>
+              setHouseAreaFilter(e.target.value === 'all' ? 'all' : (e.target.value as ChoreHouseAreaCode))
+            }
+            className="mt-1 rounded border border-gray-300 px-2 py-1 text-sm min-w-[11rem]"
+          >
+            <option value="all">All areas</option>
+            {CHORE_HOUSE_AREAS.map((code) => (
+              <option key={code} value={code}>
+                {CHORE_HOUSE_AREA_LABELS[code]}
+              </option>
+            ))}
+          </select>
+        </div>
       </div>
       {!hasAnyBlock && (
         <p className="text-sm text-gray-600">
           {instances.length === 0
             ? 'No tasks scheduled for this day.'
-            : 'No tasks in this category for this day.'}
+            : 'No tasks match the selected filters for this day.'}
         </p>
       )}
       {TIME_ORDER.map((block) => {
@@ -354,6 +386,14 @@ export default function TodayView({ selectedUserId, members }: TodayViewProps) {
                     <span className="rounded bg-gray-100 px-1.5 py-0.5 text-xs text-gray-600">
                       {inst.template.category.name}
                     </span>
+                    {normalizeHouseArea(inst.template.houseArea) !== 'NONE' && (
+                      <span
+                        className="rounded bg-slate-100 px-1.5 py-0.5 text-xs text-slate-700"
+                        title="House area"
+                      >
+                        {CHORE_HOUSE_AREA_LABELS[normalizeHouseArea(inst.template.houseArea)]}
+                      </span>
+                    )}
                     {pool ? (
                       <span className="text-sm text-gray-500">(Anyone)</span>
                     ) : (

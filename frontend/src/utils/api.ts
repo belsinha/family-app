@@ -371,6 +371,8 @@ export interface ChoreTemplate {
   description?: string | null;
   categoryId: number;
   category: ChoreCategory;
+  /** Where in the home; omit or unknown treated as NONE client-side. */
+  houseArea?: string;
   assignees: ChoreTemplateAssigneeRow[];
   assigneeIds: number[];
   assignedToId: number;
@@ -393,6 +395,7 @@ export interface ChoreTemplateSavePayload {
   name: string;
   description?: string | null;
   categoryId: number;
+  houseArea?: string;
   assigneeIds: number[];
   anyoneMayComplete?: boolean;
   frequencyType: string;
