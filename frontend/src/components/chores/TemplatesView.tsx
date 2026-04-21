@@ -570,13 +570,6 @@ export default function TemplatesView({ members, editorMemberId }: TemplatesView
         <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-900">{error}</div>
       )}
 
-      {!canEdit && (
-        <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
-          Only the household member with edit permission can change templates, and your login name must match that
-          person in the chore list.
-        </p>
-      )}
-
       <div className="flex flex-col gap-4">
         <div className="flex flex-wrap items-end gap-3">
           <div className="flex min-w-[10rem] flex-col gap-1">

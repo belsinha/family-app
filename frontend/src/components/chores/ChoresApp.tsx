@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { api, type ChoreHouseholdMember } from '../../utils/api';
-import { findChoreEditorMember } from './choreMemberMatch';
+import { resolveChoreEditorMemberIdForParentUi } from './choreMemberMatch';
 import TodayView from './TodayView';
 import WeekView from './WeekView';
 import TemplatesView from './TemplatesView';
@@ -83,9 +83,8 @@ export default function ChoresApp() {
   }, [members, memberFromUrl, tabFromUrl, isChoresSelfOnly]);
 
   const editorMemberId = useMemo(() => {
-    if (!user?.name || members.length === 0) return null;
-    return findChoreEditorMember(members, user.name)?.id ?? null;
-  }, [user?.name, members]);
+    return resolveChoreEditorMemberIdForParentUi(members, user?.name, user?.role === 'parent');
+  }, [user?.name, user?.role, members]);
 
   if (loading) {
     return (
