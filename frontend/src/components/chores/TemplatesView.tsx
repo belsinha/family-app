@@ -44,6 +44,11 @@ const WEEKDAY_OPTIONS = [
   { v: 6, label: 'Saturday' },
 ];
 
+const IMPORT_WEEKDAY_OPTIONS = [
+  { v: '', label: 'Not set' },
+  ...WEEKDAY_OPTIONS.map((d) => ({ v: String(d.v), label: d.label })),
+];
+
 interface TemplatesViewProps {
   members: ChoreHouseholdMember[];
   editorMemberId: number | null;
@@ -176,7 +181,7 @@ export default function TemplatesView({ members, editorMemberId }: TemplatesView
   const [importReviewOpen, setImportReviewOpen] = useState(false);
   const [importBulkSaving, setImportBulkSaving] = useState(false);
   const [importRows, setImportRows] = useState<(TemplateImportPreviewItem & { selected: boolean })[]>([]);
-  const [importParseMode, setImportParseMode] = useState<'openai' | 'lines' | null>(null);
+  const [importParseMode, setImportParseMode] = useState<'openai' | 'lines' | 'structured' | null>(null);
   const [importParseMessage, setImportParseMessage] = useState<string | null>(null);
   const [renamingCategoryId, setRenamingCategoryId] = useState<number | null>(null);
   const [renamingCategoryValue, setRenamingCategoryValue] = useState('');
@@ -334,8 +339,8 @@ export default function TemplatesView({ members, editorMemberId }: TemplatesView
       return;
     }
     const defaultAssignees = defaultAssigneeIdsForNewTemplate();
-    if (defaultAssignees.length === 0) {
-      setError('No household members available for assignees.');
+    if (defaultAssignees.length === 0 && !selected.some((r) => r.anyoneMayComplete)) {
+      setError('No household members available for assignees (or mark rows as anyone-can-do).');
       return;
     }
     setImportBulkSaving(true);
@@ -344,16 +349,17 @@ export default function TemplatesView({ members, editorMemberId }: TemplatesView
       for (const row of selected) {
         const name = row.name.trim();
         if (!name) continue;
+        const anyone = row.anyoneMayComplete === true;
         const payload: ChoreTemplateSavePayload = {
           name,
           description: row.description?.trim() || null,
           categoryId: row.categoryId,
-          houseArea: 'NONE',
-          assigneeIds: defaultAssignees,
-          anyoneMayComplete: false,
+          houseArea: row.houseArea ?? 'NONE',
+          assigneeIds: anyone ? [] : defaultAssignees,
+          anyoneMayComplete: anyone,
           frequencyType: row.frequencyType,
-          dayOfWeek: null,
-          weekOfMonth: null,
+          dayOfWeek: row.frequencyType === 'WEEKLY' ? row.dayOfWeek ?? null : null,
+          weekOfMonth: row.frequencyType === 'MONTHLY' ? row.weekOfMonth ?? null : null,
           dayOfMonth: null,
           semiannualMonths: row.frequencyType === 'SEMIANNUAL' ? '[1,7]' : null,
           conditionalDayOfWeek: null,
@@ -1278,9 +1284,14 @@ export default function TemplatesView({ members, editorMemberId }: TemplatesView
                 Review imported tasks
               </h3>
               <p className="mt-1 text-sm text-gray-600">
-                Parsed using {importParseMode === 'openai' ? 'structured extraction (OpenAI)' : 'line-by-line heuristics'}.
-                Adjust categories, wording, and schedule before adding. Assignees default to the first child in the list;
-                edit each template afterward if needed.
+                Parsed using{' '}
+                {importParseMode === 'structured'
+                  ? 'Task/Category/Area/Person/Day/Time/Frequency blocks from your file'
+                  : importParseMode === 'openai'
+                    ? 'OpenAI extraction'
+                    : 'line-by-line heuristics'}
+                . Adjust fields before adding. Rows marked anyone-can-do are created with no fixed assignees; others
+                default to the first child in the household list.
               </p>
               {importParseMessage ? (
                 <p className="mt-2 text-sm text-amber-800">{importParseMessage}</p>
@@ -1295,13 +1306,17 @@ export default function TemplatesView({ members, editorMemberId }: TemplatesView
                     <th className="px-2 py-2 font-semibold">Description</th>
                     <th className="px-2 py-2 font-semibold">Category</th>
                     <th className="px-2 py-2 font-semibold">Match</th>
+                    <th className="px-2 py-2 font-semibold">House area</th>
+                    <th className="px-2 py-2 font-semibold">Anyone</th>
                     <th className="px-2 py-2 font-semibold">How often</th>
                     <th className="px-2 py-2 font-semibold">Time</th>
+                    <th className="px-2 py-2 font-semibold">Weekday</th>
+                    <th className="px-2 py-2 font-semibold">Week of month</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
                   {importRows.map((row, idx) => (
-                    <tr key={`${idx}-${row.name}`} className="align-top">
+                    <tr key={idx} className="align-top">
                       <td className="px-2 py-2">
                         <input
                           type="checkbox"
@@ -1368,6 +1383,39 @@ export default function TemplatesView({ members, editorMemberId }: TemplatesView
                       <td className="px-2 py-2">
                         <select
                           className="w-full max-w-[9rem] rounded border border-gray-200 px-1 py-1"
+                          value={normalizeHouseArea(row.houseArea)}
+                          onChange={(e) =>
+                            setImportRows((rows) =>
+                              rows.map((r, i) =>
+                                i === idx ? { ...r, houseArea: e.target.value as ChoreHouseAreaCode } : r
+                              )
+                            )
+                          }
+                        >
+                          {CHORE_HOUSE_AREAS.map((code) => (
+                            <option key={code} value={code}>
+                              {CHORE_HOUSE_AREA_LABELS[code]}
+                            </option>
+                          ))}
+                        </select>
+                      </td>
+                      <td className="px-2 py-2 text-center">
+                        <input
+                          type="checkbox"
+                          title="Anyone in the household may complete (no fixed assignee)"
+                          checked={row.anyoneMayComplete}
+                          onChange={(e) =>
+                            setImportRows((rows) =>
+                              rows.map((r, i) =>
+                                i === idx ? { ...r, anyoneMayComplete: e.target.checked } : r
+                              )
+                            )
+                          }
+                        />
+                      </td>
+                      <td className="px-2 py-2">
+                        <select
+                          className="w-full max-w-[9rem] rounded border border-gray-200 px-1 py-1"
                           value={row.frequencyType}
                           onChange={(e) =>
                             setImportRows((rows) =>
@@ -1395,6 +1443,59 @@ export default function TemplatesView({ members, editorMemberId }: TemplatesView
                           {TIME_BLOCKS.map((tb) => (
                             <option key={tb} value={tb}>
                               {tb}
+                            </option>
+                          ))}
+                        </select>
+                      </td>
+                      <td className="px-2 py-2">
+                        <select
+                          className="w-full max-w-[7rem] rounded border border-gray-200 px-1 py-1 disabled:opacity-40"
+                          disabled={row.frequencyType !== 'WEEKLY'}
+                          value={row.dayOfWeek == null ? '' : String(row.dayOfWeek)}
+                          onChange={(e) =>
+                            setImportRows((rows) =>
+                              rows.map((r, i) =>
+                                i === idx
+                                  ? {
+                                      ...r,
+                                      dayOfWeek:
+                                        e.target.value === '' ? null : parseInt(e.target.value, 10),
+                                    }
+                                  : r
+                              )
+                            )
+                          }
+                        >
+                          {IMPORT_WEEKDAY_OPTIONS.map((d) => (
+                            <option key={d.v === '' ? 'none' : d.v} value={d.v}>
+                              {d.label}
+                            </option>
+                          ))}
+                        </select>
+                      </td>
+                      <td className="px-2 py-2">
+                        <select
+                          className="w-full max-w-[5rem] rounded border border-gray-200 px-1 py-1 disabled:opacity-40"
+                          disabled={row.frequencyType !== 'MONTHLY'}
+                          value={row.weekOfMonth == null ? '' : String(row.weekOfMonth)}
+                          onChange={(e) =>
+                            setImportRows((rows) =>
+                              rows.map((r, i) =>
+                                i === idx
+                                  ? {
+                                      ...r,
+                                      weekOfMonth:
+                                        e.target.value === '' ? null : parseInt(e.target.value, 10),
+                                    }
+                                  : r
+                              )
+                            )
+                          }
+                        >
+                          <option value="">Not set</option>
+                          {[1, 2, 3, 4].map((w) => (
+                            <option key={w} value={w}>
+                              {w}
                             </option>
                           ))}
                         </select>

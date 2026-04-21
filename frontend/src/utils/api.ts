@@ -352,10 +352,14 @@ export interface TemplateImportPreviewItem {
   categoryHint: string | null;
   frequencyType: string;
   timeBlock: string;
+  houseArea: string;
+  anyoneMayComplete: boolean;
+  dayOfWeek: number | null;
+  weekOfMonth: number | null;
 }
 
 export interface TemplateImportParseResponse {
-  parseMode: 'openai' | 'lines';
+  parseMode: 'openai' | 'lines' | 'structured';
   message?: string;
   items: TemplateImportPreviewItem[];
 }
