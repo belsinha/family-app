@@ -18,7 +18,7 @@ const TIME_BLOCKS = ['MORNING', 'AFTERNOON', 'NIGHT', 'ANY'] as const;
 
 const IMAGE_MIME = new Set(['image/jpeg', 'image/png', 'image/gif', 'image/webp']);
 
-export type CategoryMatchLevel = 'exact' | 'partial' | 'fallback';
+export type CategoryMatchLevel = 'exact' | 'partial' | 'suggested' | 'fallback';
 
 export interface ImportPreviewItem {
   name: string;
@@ -30,6 +30,8 @@ export interface ImportPreviewItem {
   timeBlock: string;
   houseArea: string;
   anyoneMayComplete: boolean;
+  /** Resolved from PDF "Person:" when names match household members; empty means use default assignees on import. */
+  assigneeIds: number[];
   dayOfWeek: number | null;
   /** For MONTHLY imports from PDFs, first week of month as a default when day-of-week is not used by the generator. */
   weekOfMonth: number | null;
@@ -44,6 +46,8 @@ export interface ImportPreviewResult {
 
 type ChoreCategoryRow = { id: number; name: string };
 
+export type HouseholdMemberHint = { id: number; name: string };
+
 type RawChore = {
   name: string;
   description: string | null;
@@ -54,7 +58,17 @@ type RawChore = {
   anyoneMayComplete?: boolean;
   dayOfWeek?: number | null;
   weekOfMonth?: number | null;
+  /** Raw "Person:" line for assignee resolution (not anyone / n/a). */
+  personHint?: string | null;
 };
+
+function significantWords(s: string): string[] {
+  return s
+    .toLowerCase()
+    .split(/\s+/)
+    .map((w) => w.replace(/[^a-z0-9]/g, ''))
+    .filter((w) => w.length > 2);
+}
 
 export function matchCategoryId(
   hint: string | null | undefined,
@@ -81,7 +95,55 @@ export function matchCategoryId(
   if (partial) {
     return { id: partial.id, match: 'partial' };
   }
+
+  const hw = significantWords(h);
+  if (hw.length > 0) {
+    let best: { id: number; score: number } | null = null;
+    for (const c of categories) {
+      const cn = c.name.toLowerCase();
+      const cw = significantWords(c.name);
+      let score = 0;
+      for (const w of hw) {
+        if (cn.includes(w)) score += 3;
+      }
+      for (const w of cw) {
+        if (h.includes(w)) score += 2;
+      }
+      if (score > 0 && (!best || score > best.score)) {
+        best = { id: c.id, score };
+      }
+    }
+    if (best && best.score >= 4) {
+      return { id: best.id, match: 'suggested' };
+    }
+    if (best && best.score >= 2) {
+      return { id: best.id, match: 'suggested' };
+    }
+  }
   return { id: first.id, match: 'fallback' };
+}
+
+export function resolveAssigneeIdsFromPersonHint(
+  personHint: string | null | undefined,
+  anyoneMayComplete: boolean,
+  members: HouseholdMemberHint[]
+): number[] {
+  if (anyoneMayComplete || !personHint?.trim()) return [];
+  const t = personHint.trim();
+  if (/^n\/a$/i.test(t) || /^na$/i.test(t)) return [];
+  const parts = t.split(/\s*,\s*|\s+and\s+/i);
+  const ids: number[] = [];
+  const seen = new Set<number>();
+  for (const part of parts) {
+    const name = part.trim();
+    if (!name || /^n\/a$/i.test(name)) continue;
+    const m = members.find((mem) => mem.name.trim().toLowerCase() === name.toLowerCase());
+    if (m && !seen.has(m.id)) {
+      seen.add(m.id);
+      ids.push(m.id);
+    }
+  }
+  return ids;
 }
 
 function normalizeFrequency(v: unknown): string {
@@ -201,10 +263,14 @@ function kvBlockToRawChore(b: KvBlock): RawChore | null {
   const dayOfWeek = mapPdfDayToDow(b.day);
   const houseArea = parseChoreHouseArea(mapPdfAreaToHouseCode(b.area));
 
+  const personHint = (() => {
+    const p = b.person?.trim();
+    if (!p || /^n\/a$/i.test(p)) return null;
+    if (mapPdfPersonAnyone(p)) return null;
+    return p;
+  })();
+
   const notes: string[] = [];
-  if (b.person?.trim() && !anyoneMayComplete && !/^n\/a$/i.test(b.person.trim())) {
-    notes.push(`Person (from PDF): ${b.person.trim()}`);
-  }
   if (extraNote) notes.push(extraNote);
   if (frequencyType === 'WEEKLY' && dayOfWeek == null && b.day?.trim() && !/^n\/a$/i.test(b.day.trim())) {
     notes.push(`Day (from PDF): ${b.day.trim()}`);
@@ -232,6 +298,7 @@ function kvBlockToRawChore(b: KvBlock): RawChore | null {
     anyoneMayComplete,
     dayOfWeek: effectiveDow,
     weekOfMonth,
+    personHint,
   };
 }
 
@@ -323,6 +390,16 @@ function rawChoresFromOpenAiPayload(payload: Record<string, unknown>): RawChore[
       const n = Number(dowRaw);
       dayOfWeek = Number.isInteger(n) && n >= 0 && n <= 6 ? n : null;
     }
+    const anyoneMayComplete = o.anyoneMayComplete === true;
+    let personHint: string | null = null;
+    const pr = o.personHint ?? o.person;
+    if (typeof pr === 'string' && pr.trim()) {
+      const p = pr.trim();
+      if (!/^n\/a$/i.test(p) && !mapPdfPersonAnyone(p)) {
+        personHint = p;
+      }
+    }
+
     out.push({
       name,
       description,
@@ -330,10 +407,11 @@ function rawChoresFromOpenAiPayload(payload: Record<string, unknown>): RawChore[
       frequencyType: normalizeFrequency(o.frequencyType),
       timeBlock: normalizeTimeBlock(o.timeBlock),
       houseArea: typeof o.houseArea === 'string' ? o.houseArea.trim() : undefined,
-      anyoneMayComplete: o.anyoneMayComplete === true,
+      anyoneMayComplete,
       dayOfWeek,
       weekOfMonth:
         o.weekOfMonth != null && Number.isInteger(Number(o.weekOfMonth)) ? Number(o.weekOfMonth) : undefined,
+      personHint,
     });
   }
   return out;
@@ -355,9 +433,9 @@ async function structureChoresWithOpenAi(
       {
         role: 'system',
         content: `You extract household chore tasks from unstructured text. Respond with JSON: {"chores":[...]}.
-Each chore object: name (short title, required), description (extra detail or empty string), categoryHint (best category label or empty), frequencyType (one of: ${FREQUENCY_TYPES.join(', ')}; default DAILY), timeBlock (one of: ${TIME_BLOCKS.join(', ')}; default ANY), optional houseArea (one of: NONE, KITCHEN, BATHROOM, BEDROOM, LIVING, DINING, LAUNDRY, OFFICE, HALLWAY, GARAGE, OUTDOOR, BASEMENT, ATTIC, PLAYROOM, OTHER), optional anyoneMayComplete (boolean), optional dayOfWeek (0–6 Sunday–Saturday) when weekly or similar.
+Each chore object: name (short title, required), description (extra detail or empty string), categoryHint (best category label or empty), frequencyType (one of: ${FREQUENCY_TYPES.join(', ')}; default DAILY), timeBlock (one of: ${TIME_BLOCKS.join(', ')}; default ANY), optional houseArea (one of: NONE, KITCHEN, BATHROOM, BEDROOM, LIVING, DINING, LAUNDRY, OFFICE, HALLWAY, GARAGE, OUTDOOR, BASEMENT, ATTIC, PLAYROOM, OTHER), optional anyoneMayComplete (boolean), optional personHint (exact person name(s) from the document when a specific person is assigned — comma-separated or "Name1 and Name2"; omit or empty when n/a or anyone), optional dayOfWeek (0–6 Sunday–Saturday) when weekly or similar.
 Existing category names for hints (prefer aligning categoryHint when obvious): ${categoryNames.join(', ') || '(none)'}.
-If the text uses lines like "Task:", "Category:", "Area:", "Person:", "Day:", "Time:", "Frequency:", preserve those mappings in the JSON fields.
+If the text uses lines like "Task:", "Category:", "Area:", "Person:", "Day:", "Time:", "Frequency:", preserve those mappings in the JSON fields (copy Person: value into personHint when it is a specific name, not "Anyone").
 Skip headers, page numbers, and non-task lines. Merge sub-bullets into one chore when they belong together.`,
       },
       { role: 'user', content: trimmed },
@@ -378,7 +456,7 @@ async function structureChoresFromImageOpenAi(
     {
       role: 'system',
         content: `You read images of chore lists. Respond with JSON: {"chores":[...]}.
-Each chore: name (required), description (detail or empty), categoryHint, frequencyType (${FREQUENCY_TYPES.join(', ')}), timeBlock (${TIME_BLOCKS.join(', ')}), optional houseArea (NONE, KITCHEN, BATHROOM, BEDROOM, LIVING, DINING, LAUNDRY, OFFICE, HALLWAY, GARAGE, OUTDOOR, BASEMENT, ATTIC, PLAYROOM, OTHER), optional anyoneMayComplete, optional dayOfWeek 0–6.
+Each chore: name (required), description (detail or empty), categoryHint, frequencyType (${FREQUENCY_TYPES.join(', ')}), timeBlock (${TIME_BLOCKS.join(', ')}), optional houseArea (NONE, KITCHEN, BATHROOM, BEDROOM, LIVING, DINING, LAUNDRY, OFFICE, HALLWAY, GARAGE, OUTDOOR, BASEMENT, ATTIC, PLAYROOM, OTHER), optional anyoneMayComplete, optional personHint (specific assignee name(s) from the image; omit when anyone or n/a), optional dayOfWeek 0–6.
 Category hints may align with: ${categoryNames.join(', ') || '(none)'}.`,
     },
     {
@@ -456,19 +534,36 @@ function naiveLinesFromText(text: string): RawChore[] {
   return out;
 }
 
-function toPreviewItems(raw: RawChore[], categories: ChoreCategoryRow[]): ImportPreviewItem[] {
+function toPreviewItems(
+  raw: RawChore[],
+  categories: ChoreCategoryRow[],
+  members: HouseholdMemberHint[] = []
+): ImportPreviewItem[] {
   return raw.map((r) => {
     const { id, match } = matchCategoryId(r.categoryHint, categories);
+    const anyone = r.anyoneMayComplete ?? false;
+    const assigneeIds = resolveAssigneeIdsFromPersonHint(r.personHint, anyone, members);
+    let description = r.description;
+    if (
+      assigneeIds.length === 0 &&
+      !anyone &&
+      r.personHint?.trim() &&
+      !/^n\/a$/i.test(r.personHint.trim())
+    ) {
+      const extra = `Person from file "${r.personHint.trim()}" did not match a household name — pick assignees below or add the member.`;
+      description = description ? `${description} · ${extra}` : extra;
+    }
     return {
       name: r.name,
-      description: r.description,
+      description,
       categoryId: id,
       categoryMatch: match,
       categoryHint: r.categoryHint,
       frequencyType: r.frequencyType,
       timeBlock: r.timeBlock,
       houseArea: parseChoreHouseArea(r.houseArea ?? 'NONE'),
-      anyoneMayComplete: r.anyoneMayComplete ?? false,
+      anyoneMayComplete: anyone,
+      assigneeIds,
       dayOfWeek: r.dayOfWeek ?? null,
       weekOfMonth: r.weekOfMonth ?? null,
     };
@@ -486,18 +581,24 @@ function inferImageMime(mimetype: string, lower: string): string {
 
 function tryStructuredKeyValueImport(
   text: string,
-  categories: ChoreCategoryRow[]
+  categories: ChoreCategoryRow[],
+  members: HouseholdMemberHint[] = []
 ): ImportPreviewResult | null {
   if (!looksStructuredChorePdf(text)) return null;
   const raw = parseStructuredChoreListFromText(text);
   if (raw.length === 0) return null;
-  const items = toPreviewItems(raw, categories);
+  const items = toPreviewItems(raw, categories, members);
   const fallbackCount = items.filter((i) => i.categoryMatch === 'fallback').length;
+  const suggestedCount = items.filter((i) => i.categoryMatch === 'suggested').length;
   const anyoneCount = items.filter((i) => i.anyoneMayComplete).length;
   const parts: string[] = [];
   if (fallbackCount > 0) {
     parts.push(
       `${fallbackCount} task(s) used the first category as a guess — pick the right category before adding.`
+    );
+  } else if (suggestedCount > 0) {
+    parts.push(
+      `${suggestedCount} task(s) category was inferred from wording — confirm the category column.`
     );
   }
   if (anyoneCount > 0) {
@@ -515,8 +616,10 @@ export async function buildImportPreview(opts: {
   mimetype: string;
   originalname: string;
   categories: ChoreCategoryRow[];
+  members?: HouseholdMemberHint[];
 }): Promise<ImportPreviewResult> {
-  const { buffer, mimetype, originalname, categories } = opts;
+  const { buffer, mimetype, originalname, categories, members: membersOpt } = opts;
+  const members = membersOpt ?? [];
   const lower = originalname.toLowerCase();
   const mime = (mimetype || '').toLowerCase();
   const isPdf = mime === 'application/pdf' || lower.endsWith('.pdf');
@@ -539,13 +642,13 @@ export async function buildImportPreview(opts: {
     const raw = await structureChoresFromImageOpenAi(b64, imgMime, categoryNames);
     return {
       parseMode: 'openai',
-      items: toPreviewItems(raw, categories),
+      items: toPreviewItems(raw, categories, members),
     };
   }
 
   if (isTxt && !isPdf) {
     const text = buffer.toString('utf8');
-    const structuredTxt = tryStructuredKeyValueImport(text, categories);
+    const structuredTxt = tryStructuredKeyValueImport(text, categories, members);
     if (structuredTxt) return structuredTxt;
 
     let parseMode: 'openai' | 'lines' = 'lines';
@@ -556,14 +659,17 @@ export async function buildImportPreview(opts: {
     if (raw.length === 0) {
       throw new Error('No chore lines were found in the text file.');
     }
-    const items = toPreviewItems(raw, categories);
+    const items = toPreviewItems(raw, categories, members);
     const fallbackCount = items.filter((i) => i.categoryMatch === 'fallback').length;
+    const suggestedCount = items.filter((i) => i.categoryMatch === 'suggested').length;
     return {
       parseMode,
       message:
         fallbackCount > 0
           ? `${fallbackCount} task(s) used the first category as a guess — adjust after import.`
-          : undefined,
+          : suggestedCount > 0
+            ? `${suggestedCount} task(s) category was inferred from wording — confirm before adding.`
+            : undefined,
       items,
     };
   }
@@ -579,7 +685,7 @@ export async function buildImportPreview(opts: {
     );
   }
 
-  const structuredPdf = tryStructuredKeyValueImport(pdfText, categories);
+  const structuredPdf = tryStructuredKeyValueImport(pdfText, categories, members);
   if (structuredPdf) return structuredPdf;
 
   let parseMode: 'openai' | 'lines' = 'lines';
@@ -591,12 +697,15 @@ export async function buildImportPreview(opts: {
     throw new Error('No chore lines were found. Check the document or add chores manually.');
   }
 
-  const items = toPreviewItems(raw, categories);
+  const items = toPreviewItems(raw, categories, members);
   const fallbackCount = items.filter((i) => i.categoryMatch === 'fallback').length;
+  const suggestedCount = items.filter((i) => i.categoryMatch === 'suggested').length;
   const message =
     fallbackCount > 0
       ? `${fallbackCount} task(s) used the first category as a guess — adjust categories after import.`
-      : undefined;
+      : suggestedCount > 0
+        ? `${suggestedCount} task(s) category was inferred from wording — confirm the category column.`
+        : undefined;
 
   return {
     parseMode,

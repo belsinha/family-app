@@ -313,7 +313,13 @@ export default function TemplatesView({ members, editorMemberId }: TemplatesView
     setError(null);
     try {
       const res = await api.parseTemplateImport(file, editorMemberId);
-      setImportRows(res.items.map((i) => ({ ...i, selected: true })));
+      setImportRows(
+        res.items.map((i) => ({
+          ...i,
+          selected: true,
+          assigneeIds: Array.isArray(i.assigneeIds) ? i.assigneeIds : [],
+        }))
+      );
       setImportParseMode(res.parseMode);
       setImportParseMessage(res.message ?? null);
       setImportReviewOpen(true);
@@ -339,8 +345,20 @@ export default function TemplatesView({ members, editorMemberId }: TemplatesView
       return;
     }
     const defaultAssignees = defaultAssigneeIdsForNewTemplate();
-    if (defaultAssignees.length === 0 && !selected.some((r) => r.anyoneMayComplete)) {
+    const assigneesForRow = (row: (typeof importRows)[number]) => {
+      if (row.anyoneMayComplete) return [] as number[];
+      if (row.assigneeIds.length > 0) return row.assigneeIds;
+      return defaultAssignees;
+    };
+    if (!selected.some((r) => r.anyoneMayComplete) && defaultAssignees.length === 0) {
       setError('No household members available for assignees (or mark rows as anyone-can-do).');
+      return;
+    }
+    const missingAssignee = selected.find((r) => !r.anyoneMayComplete && assigneesForRow(r).length === 0);
+    if (missingAssignee) {
+      setError(
+        `Select at least one assignee for "${missingAssignee.name.trim() || 'a row'}" or mark it as anyone-can-do.`
+      );
       return;
     }
     setImportBulkSaving(true);
@@ -355,7 +373,7 @@ export default function TemplatesView({ members, editorMemberId }: TemplatesView
           description: row.description?.trim() || null,
           categoryId: row.categoryId,
           houseArea: row.houseArea ?? 'NONE',
-          assigneeIds: anyone ? [] : defaultAssignees,
+          assigneeIds: anyone ? [] : assigneesForRow(row),
           anyoneMayComplete: anyone,
           frequencyType: row.frequencyType,
           dayOfWeek: row.frequencyType === 'WEEKLY' ? row.dayOfWeek ?? null : null,
@@ -1290,8 +1308,9 @@ export default function TemplatesView({ members, editorMemberId }: TemplatesView
                   : importParseMode === 'openai'
                     ? 'OpenAI extraction'
                     : 'line-by-line heuristics'}
-                . Adjust fields before adding. Rows marked anyone-can-do are created with no fixed assignees; others
-                default to the first child in the household list.
+                . Adjust fields before adding. Rows marked anyone-can-do are created with no fixed assignees. For
+                fixed assignees, names from the file are matched to household members when possible; otherwise use the
+                checkboxes or the household default (first child in the list).
               </p>
               {importParseMessage ? (
                 <p className="mt-2 text-sm text-amber-800">{importParseMessage}</p>
@@ -1305,7 +1324,8 @@ export default function TemplatesView({ members, editorMemberId }: TemplatesView
                     <th className="px-2 py-2 font-semibold">Task</th>
                     <th className="px-2 py-2 font-semibold">Description</th>
                     <th className="px-2 py-2 font-semibold">Category</th>
-                    <th className="px-2 py-2 font-semibold">Match</th>
+                    <th className="px-2 py-2 font-semibold">Category match</th>
+                    <th className="px-2 py-2 font-semibold">Assignees</th>
                     <th className="px-2 py-2 font-semibold">House area</th>
                     <th className="px-2 py-2 font-semibold">Anyone</th>
                     <th className="px-2 py-2 font-semibold">How often</th>
@@ -1378,7 +1398,41 @@ export default function TemplatesView({ members, editorMemberId }: TemplatesView
                           ? 'Exact'
                           : row.categoryMatch === 'partial'
                             ? 'Partial'
-                            : 'Guess'}
+                            : row.categoryMatch === 'suggested'
+                              ? 'Inferred'
+                              : 'Guess'}
+                      </td>
+                      <td className="px-2 py-2 min-w-[7rem] max-w-[12rem]">
+                        {row.anyoneMayComplete ? (
+                          <span className="text-xs text-gray-500">—</span>
+                        ) : (
+                          <div className="flex flex-col gap-1">
+                            {(assignableMembers.length > 0 ? assignableMembers : members).map((m) => (
+                              <label
+                                key={m.id}
+                                className="flex cursor-pointer items-center gap-1.5 text-xs text-gray-800"
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={row.assigneeIds.includes(m.id)}
+                                  onChange={() =>
+                                    setImportRows((rows) =>
+                                      rows.map((r, i) =>
+                                        i === idx
+                                          ? {
+                                              ...r,
+                                              assigneeIds: toggleAssignee(r.assigneeIds, m.id, false),
+                                            }
+                                          : r
+                                      )
+                                    )
+                                  }
+                                />
+                                <span className="truncate">{m.name}</span>
+                              </label>
+                            ))}
+                          </div>
+                        )}
                       </td>
                       <td className="px-2 py-2">
                         <select
@@ -1406,9 +1460,17 @@ export default function TemplatesView({ members, editorMemberId }: TemplatesView
                           checked={row.anyoneMayComplete}
                           onChange={(e) =>
                             setImportRows((rows) =>
-                              rows.map((r, i) =>
-                                i === idx ? { ...r, anyoneMayComplete: e.target.checked } : r
-                              )
+                              rows.map((r, i) => {
+                                if (i !== idx) return r;
+                                const on = e.target.checked;
+                                if (on) return { ...r, anyoneMayComplete: true, assigneeIds: [] };
+                                const fb = defaultAssigneeIdsForNewTemplate();
+                                return {
+                                  ...r,
+                                  anyoneMayComplete: false,
+                                  assigneeIds: r.assigneeIds.length > 0 ? r.assigneeIds : fb,
+                                };
+                              })
                             )
                           }
                         />

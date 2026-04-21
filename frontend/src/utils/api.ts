@@ -342,7 +342,7 @@ export interface ChoreCategory {
   sortOrder: number;
 }
 
-export type TemplateImportCategoryMatch = 'exact' | 'partial' | 'fallback';
+export type TemplateImportCategoryMatch = 'exact' | 'partial' | 'suggested' | 'fallback';
 
 export interface TemplateImportPreviewItem {
   name: string;
@@ -354,6 +354,8 @@ export interface TemplateImportPreviewItem {
   timeBlock: string;
   houseArea: string;
   anyoneMayComplete: boolean;
+  /** From PDF Person: when names match household members; edit before commit. */
+  assigneeIds: number[];
   dayOfWeek: number | null;
   weekOfMonth: number | null;
 }

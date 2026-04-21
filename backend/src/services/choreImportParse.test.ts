@@ -4,6 +4,7 @@ import {
   looksStructuredChorePdf,
   parseStructuredChoreListFromText,
   matchCategoryId,
+  resolveAssigneeIdsFromPersonHint,
 } from './choreImportParse.js';
 
 const SAMPLE = `Task: Walk dog
@@ -20,6 +21,13 @@ Person: Anyone
 Day: n/a
 Time: Morning
 Frequency: Daily
+Task: Sort recycling
+Category: Home Maintenance
+Area: Garage
+Person: Alex Rivera
+Day: n/a
+Time: Afternoon
+Frequency: Weekly
 `;
 
 test('looksStructuredChorePdf detects key:value chore export', () => {
@@ -29,18 +37,24 @@ test('looksStructuredChorePdf detects key:value chore export', () => {
 
 test('parseStructuredChoreListFromText maps area, time, frequency, anyone', () => {
   const raw = parseStructuredChoreListFromText(SAMPLE);
-  assert.equal(raw.length, 2);
+  assert.equal(raw.length, 3);
   const walk = raw.find((r) => r.name.includes('Walk dog'));
   assert.ok(walk);
   assert.equal(walk!.houseArea, 'OUTDOOR');
   assert.equal(walk!.timeBlock, 'MORNING');
   assert.equal(walk!.frequencyType, 'DAILY');
   assert.equal(walk!.anyoneMayComplete, false);
+  assert.equal(walk!.personHint, null);
 
   const breakfast = raw.find((r) => r.name.includes('Prepare breakfast'));
   assert.ok(breakfast);
   assert.equal(breakfast!.houseArea, 'KITCHEN');
   assert.equal(breakfast!.anyoneMayComplete, true);
+
+  const recycle = raw.find((r) => r.name.includes('recycling'));
+  assert.ok(recycle);
+  assert.equal(recycle!.personHint, 'Alex Rivera');
+  assert.equal(recycle!.frequencyType, 'WEEKLY');
 });
 
 test('parseStructuredChoreListFromText weekly monthly and as-needed', () => {
@@ -87,4 +101,24 @@ test('matchCategoryId partial match', () => {
   const r = matchCategoryId('Daily Cleaning', cats);
   assert.equal(r.id, 2);
   assert.equal(r.match, 'exact');
+});
+
+test('matchCategoryId token overlap suggests category before first-category fallback', () => {
+  const cats = [
+    { id: 1, name: 'Kitchen' },
+    { id: 2, name: 'Pet Care' },
+  ];
+  const r = matchCategoryId('feed pets morning', cats);
+  assert.equal(r.id, 2);
+  assert.equal(r.match, 'suggested');
+});
+
+test('resolveAssigneeIdsFromPersonHint matches household names', () => {
+  const members = [
+    { id: 10, name: 'Alex Rivera' },
+    { id: 11, name: 'Sam' },
+  ];
+  assert.deepEqual(resolveAssigneeIdsFromPersonHint('Alex Rivera', false, members), [10]);
+  assert.deepEqual(resolveAssigneeIdsFromPersonHint('Sam and Alex Rivera', false, members), [11, 10]);
+  assert.deepEqual(resolveAssigneeIdsFromPersonHint('Anyone', true, members), []);
 });

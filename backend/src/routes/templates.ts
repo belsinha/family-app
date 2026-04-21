@@ -142,11 +142,16 @@ router.post(
         return res.status(400).json({ error: 'Missing file: send multipart field "file".' });
       }
       const categories = await prisma.choreCategory.findMany({ orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }] });
+      const householdMembers = await prisma.householdMember.findMany({
+        select: { id: true, name: true },
+        orderBy: { id: 'asc' },
+      });
       const result = await buildImportPreview({
         buffer: req.file.buffer,
         mimetype: req.file.mimetype,
         originalname: req.file.originalname || 'upload',
         categories,
+        members: householdMembers,
       });
       res.json(result);
     } catch (e) {

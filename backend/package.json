@@ -4,9 +4,10 @@
   "type": "module",
   "scripts": {
     "dev": "tsx watch src/server.ts",
-    "build": "npm run db:chores:migrate && npm run db:chores:seed && tsc && npm run copy-schema && node scripts/copy-spa-to-dist.mjs",
+    "build": "npm run db:chores:migrate && tsc && npm run copy-schema && node scripts/copy-spa-to-dist.mjs",
     "copy-schema": "node scripts/copy-schema.js",
     "start": "node dist/server.js",
+    "start:render": "node scripts/with-chores-db-url.mjs prisma migrate deploy && node dist/server.js",
     "db:chores:migrate": "node scripts/with-chores-db-url.mjs prisma migrate deploy",
     "db:chores:seed": "npm run db:chores:migrate && node scripts/with-chores-db-url.mjs npx tsx prisma/seed-chores.ts",
     "db:chores:seed:reset": "node scripts/chores-seed-reset.mjs",
