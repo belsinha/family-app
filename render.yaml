@@ -2,15 +2,17 @@ services:
   # Single web service: API + Vite SPA. Deep links (/login, /chores, …) work without CDN rewrite rules.
   # Build must run from repo root — not `cd backend && npm run build` alone (frontend must build first).
   #
-  # Casa Organizada (chores) uses SQLite at CHORES_DATABASE_URL. On Render the filesystem is ephemeral unless you
-  # attach a persistent disk: add a disk in the dashboard, mount e.g. /var/data, set
-  # CHORES_DATABASE_URL=file:/var/data/chores.db (and the same for DATABASE_PATH if you want the main DB persisted).
-  # Otherwise every deploy starts with a new empty chores database. After attaching a disk, run once:
-  #   cd backend && npm run db:chores:seed
+  # Chores + main app SQLite live on a persistent disk so templates and family data survive deploys/restarts.
+  # Render only allows disks on paid web services (not `plan: free`). If you switch back to free, remove the
+  # `disk` block and expect an empty chores DB after each deploy unless you use an external database.
   - type: web
     name: family-app-backend
     runtime: node
-    plan: free
+    plan: starter
+    disk:
+      name: family-app-data
+      mountPath: /opt/render/project/src/persist
+      sizeGB: 5
     # Inline so deploy works even if this YAML is applied before `build:render` exists in package.json on main.
     buildCommand: npm install && cd frontend && if [ -n "$RENDER_EXTERNAL_URL" ]; then export VITE_API_URL="${RENDER_EXTERNAL_URL}/api"; fi && npm run build && cd ../backend && npm run build
     startCommand: cd backend && npm run start:render
@@ -18,9 +20,9 @@ services:
       - key: NODE_ENV
         value: production
       - key: DATABASE_PATH
-        value: ./data/family-app.db
+        value: /opt/render/project/src/persist/family-app.db
       - key: CHORES_DATABASE_URL
-        value: file:./data/chores.db
+        value: file:/opt/render/project/src/persist/chores.db
       - key: SUPABASE_URL
         sync: false
       - key: SUPABASE_ANON_KEY

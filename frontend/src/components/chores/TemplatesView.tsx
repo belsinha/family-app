@@ -787,8 +787,32 @@ export default function TemplatesView({ members, editorMemberId }: TemplatesView
         <section className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
           <h3 className="text-sm font-semibold text-gray-900">Categories</h3>
           <p className="mt-1 text-xs text-gray-600">
-            Rename or remove categories. Delete is only allowed when no templates reference the category.
+            Add, rename, or remove categories. Delete is only allowed when no templates reference the category.
           </p>
+          <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-end">
+            <input
+              type="text"
+              className="w-full min-w-0 flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm shadow-sm sm:min-w-[12rem]"
+              placeholder="New category name"
+              value={newCategoryName}
+              onChange={(e) => setNewCategoryName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  void addCategory();
+                }
+              }}
+              aria-label="New category name"
+            />
+            <button
+              type="button"
+              onClick={() => void addCategory()}
+              disabled={!newCategoryName.trim()}
+              className="w-full rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-800 shadow-sm hover:bg-gray-50 disabled:opacity-50 sm:w-auto"
+            >
+              Add category
+            </button>
+          </div>
           <ul className="mt-3 divide-y divide-gray-100 rounded-lg border border-gray-100">
             {sortedCategories.map((c) => (
               <li key={c.id} className="flex flex-wrap items-center gap-2 px-3 py-2 text-sm">
@@ -1151,23 +1175,6 @@ export default function TemplatesView({ members, editorMemberId }: TemplatesView
                   ))}
                 </select>
               </div>
-                <div className="mt-3 flex flex-wrap gap-2">
-                  <input
-                    type="text"
-                    className="min-w-[12rem] flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm"
-                    placeholder="New category name"
-                    value={newCategoryName}
-                    onChange={(e) => setNewCategoryName(e.target.value)}
-                  />
-                  <button
-                    type="button"
-                    onClick={() => void addCategory()}
-                    disabled={!newCategoryName.trim()}
-                    className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-800 hover:bg-gray-50 disabled:opacity-50"
-                  >
-                    Add category
-                  </button>
-                </div>
               </div>
 
               <label className="flex cursor-pointer items-start gap-2 rounded-lg border border-gray-200 bg-amber-50/40 p-3 text-sm text-gray-800">
