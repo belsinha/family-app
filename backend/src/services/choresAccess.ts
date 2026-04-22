@@ -35,6 +35,31 @@ export async function ensureChoreTemplateEditorRole(opts?: {
   }
 }
 
+/** Default household rows when the chores DB was migrated but never seeded (e.g. new Render disk). */
+const DEFAULT_CHORES_MEMBERS: { name: string; canEditChores: boolean }[] = [
+  { name: 'Celiane', canEditChores: true },
+  { name: 'Isabel', canEditChores: false },
+  { name: 'Nicholas', canEditChores: false },
+  { name: 'Laura', canEditChores: false },
+];
+
+/**
+ * Ensures at least one category and the canonical household members exist.
+ * Safe to call on every parent read of members/categories/templates; no-ops when data is present.
+ */
+export async function bootstrapEmptyChoresHousehold(): Promise<void> {
+  const memberCount = await prisma.householdMember.count();
+  if (memberCount === 0) {
+    await prisma.householdMember.createMany({ data: DEFAULT_CHORES_MEMBERS });
+  }
+  const catCount = await prisma.choreCategory.count();
+  if (catCount === 0) {
+    await prisma.choreCategory.create({
+      data: { name: 'General', sortOrder: 0 },
+    });
+  }
+}
+
 /**
  * Template/category writes require `X-Editor-User-Id` = a household member id.
  * Members with `canEditChores` always pass. **Parents** (full chores access) also pass with any

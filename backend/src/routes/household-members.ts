@@ -3,6 +3,7 @@ import { prisma } from '../db/prisma.js';
 import { authenticate, type AuthRequest } from '../middleware/auth.js';
 import {
   hasFullChoresAccess,
+  bootstrapEmptyChoresHousehold,
   ensureChoreTemplateEditorRole,
   resolveHouseholdMemberIdForChildUser,
 } from '../services/choresAccess.js';
@@ -15,6 +16,7 @@ router.get('/', authenticate, async (req: AuthRequest, res, next) => {
       return res.status(401).json({ error: 'Authentication required' });
     }
     if (hasFullChoresAccess(req.user.role)) {
+      await bootstrapEmptyChoresHousehold();
       await ensureChoreTemplateEditorRole({ parentLoginName: req.user.name });
       const members = await prisma.householdMember.findMany({
         orderBy: { id: 'asc' },

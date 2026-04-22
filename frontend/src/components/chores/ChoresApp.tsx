@@ -39,9 +39,9 @@ export default function ChoresApp() {
   const memberFromUrl = searchParams.get('member');
   const tabFromUrl = searchParams.get('tab');
 
-  useEffect(() => {
+  const loadHouseholdMembers = () => {
     setLoadError(null);
-    api
+    return api
       .getHouseholdMembers()
       .then((list) => {
         setMembers(list);
@@ -52,7 +52,28 @@ export default function ChoresApp() {
         console.error(e);
       })
       .finally(() => setLoading(false));
+  };
+
+  useEffect(() => {
+    void loadHouseholdMembers();
   }, []);
+
+  /** After deploy, chores DB may bootstrap on first templates/categories hit; refetch if list was empty. */
+  useEffect(() => {
+    if (loading || loadError || isChoresSelfOnly) return;
+    if (members.length > 0) return;
+    if (tab !== 'templates') return;
+    let cancelled = false;
+    void api
+      .getHouseholdMembers()
+      .then((list) => {
+        if (!cancelled && list.length > 0) setMembers(list);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [tab, loading, loadError, isChoresSelfOnly, members.length]);
 
   useEffect(() => {
     if (members.length === 0) return;

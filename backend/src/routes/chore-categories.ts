@@ -1,7 +1,11 @@
 import { Router } from 'express';
 import { prisma } from '../db/prisma.js';
 import { authenticate, type AuthRequest } from '../middleware/auth.js';
-import { requireChoreEditorOrParent } from '../services/choresAccess.js';
+import {
+  bootstrapEmptyChoresHousehold,
+  hasFullChoresAccess,
+  requireChoreEditorOrParent,
+} from '../services/choresAccess.js';
 
 const router = Router();
 
@@ -13,6 +17,9 @@ router.get('/', authenticate, async (req: AuthRequest, res, next) => {
   try {
     if (!req.user) {
       return res.status(401).json({ error: 'Authentication required' });
+    }
+    if (hasFullChoresAccess(req.user.role)) {
+      await bootstrapEmptyChoresHousehold();
     }
     const list = await prisma.choreCategory.findMany({
       orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
