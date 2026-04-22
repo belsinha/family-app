@@ -171,10 +171,10 @@ export default function ChoresApp() {
   const tabs = isChoresSelfOnly ? allTabs.filter((t) => t.id === 'today') : allTabs;
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <h2 className="text-2xl font-bold text-gray-900">Casa Organizada</h2>
+    <div className="space-y-4 sm:space-y-6">
+      <div className="flex flex-col gap-4 sm:flex-row sm:flex-wrap sm:items-end sm:justify-between">
+        <div className="min-w-0">
+          <h2 className="text-xl font-bold text-gray-900 sm:text-2xl">Casa Organizada</h2>
           <p className="text-sm text-gray-500 mt-1">
             {isChoresSelfOnly
               ? 'Your tasks for today — only you can see this list.'
@@ -182,7 +182,7 @@ export default function ChoresApp() {
           </p>
         </div>
         {!isChoresSelfOnly && (
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex w-full flex-col gap-1 sm:w-auto sm:flex-row sm:flex-wrap sm:items-center sm:gap-2">
             <label htmlFor="chores-view-as" className="text-sm font-medium text-gray-700">
               View as
             </label>
@@ -194,7 +194,7 @@ export default function ChoresApp() {
                   e.target.value ? parseInt(e.target.value, 10) : null
                 )
               }
-              className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm shadow-sm"
+              className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm shadow-sm sm:w-auto sm:py-2"
             >
               <option value="">All</option>
               {members.map((m) => (
@@ -209,13 +209,13 @@ export default function ChoresApp() {
       </div>
 
       {!isChoresSelfOnly && (
-        <nav className="flex flex-wrap gap-2 border-b border-gray-200 pb-px">
+        <nav className="-mx-1 flex gap-1 overflow-x-auto border-b border-gray-200 pb-px px-1 sm:mx-0 sm:flex-wrap sm:gap-2 sm:px-0">
           {tabs.map((t) => (
             <button
               key={t.id}
               type="button"
               onClick={() => setTab(t.id)}
-              className={`border-b-2 px-3 py-2 text-sm font-medium rounded-t-md ${
+              className={`shrink-0 rounded-t-md border-b-2 px-3 py-2.5 text-sm font-medium sm:py-2 ${
                 tab === t.id
                   ? 'border-blue-600 text-blue-600 bg-white'
                   : 'border-transparent text-gray-600 hover:text-gray-900 hover:bg-gray-50'
@@ -227,7 +227,7 @@ export default function ChoresApp() {
         </nav>
       )}
 
-      <div className="rounded-lg bg-white p-6 shadow-md border border-gray-100">
+      <div className="rounded-lg border border-gray-100 bg-white p-4 shadow-md sm:p-6">
         {tab === 'today' && (
           <TodayView
             selectedUserId={isChoresSelfOnly ? null : selectedUserId}

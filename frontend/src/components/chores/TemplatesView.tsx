@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef, useLayoutEffect } from 'react';
+import { useState, useEffect, useMemo, useRef, useLayoutEffect, type ReactNode } from 'react';
 import {
   api,
   type ChoreTemplate,
@@ -131,6 +131,36 @@ function toggleAssignee(ids: number[], id: number, allowEmpty: boolean): number[
     return next;
   }
   return [...ids, id].sort((a, b) => a - b);
+}
+
+function TemplateWhoSummary({ t }: { t: ChoreTemplate }): ReactNode {
+  if (t.anyoneMayComplete) {
+    return (
+      <span>
+        <span className="font-medium text-gray-900">Anyone</span>
+        {t.assignees.length > 0 ? (
+          <span className="text-gray-600">
+            {' '}
+            · optional hints: {t.assignees.map((a) => a.member.name).join(', ')}
+          </span>
+        ) : null}
+      </span>
+    );
+  }
+  return t.assignees.map((a) => a.member.name).join(', ') || '—';
+}
+
+function TemplateWhenSummary({ t }: { t: ChoreTemplate }): ReactNode {
+  return (
+    <>
+      {t.timeBlock}
+      {t.dayOfWeek != null && t.frequencyType === 'WEEKLY' && (
+        <span className="text-gray-500"> · {WEEKDAY_OPTIONS.find((d) => d.v === t.dayOfWeek)?.label}</span>
+      )}
+      {t.weekOfMonth != null && <span className="text-gray-500"> · week {t.weekOfMonth}</span>}
+      {t.conditionalAfterTime && <span className="text-gray-500"> · after {t.conditionalAfterTime}</span>}
+    </>
+  );
 }
 
 /** Child is assignee, or anyone-chore with no hints (whole household) or hints include this child. */
@@ -571,8 +601,8 @@ export default function TemplatesView({ members, editorMemberId }: TemplatesView
       )}
 
       <div className="flex flex-col gap-4">
-        <div className="flex flex-wrap items-end gap-3">
-          <div className="flex min-w-[10rem] flex-col gap-1">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:flex lg:flex-wrap lg:items-end lg:gap-3">
+          <div className="flex min-w-0 flex-col gap-1 lg:min-w-[10rem]">
             <label htmlFor="tpl-cat-filter" className="text-xs font-medium uppercase tracking-wide text-gray-500">
               Category
             </label>
@@ -583,7 +613,7 @@ export default function TemplatesView({ members, editorMemberId }: TemplatesView
                 const v = e.target.value;
                 setCategoryFilterId(v === 'all' ? 'all' : parseInt(v, 10));
               }}
-              className="w-full max-w-[14rem] rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm shadow-sm"
+              className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm shadow-sm lg:max-w-[14rem]"
             >
               <option value="all">All categories</option>
               {sortedCategories.map((c) => (
@@ -593,7 +623,7 @@ export default function TemplatesView({ members, editorMemberId }: TemplatesView
               ))}
             </select>
           </div>
-          <div className="flex min-w-[10rem] flex-col gap-1">
+          <div className="flex min-w-0 flex-col gap-1 lg:min-w-[10rem]">
             <label htmlFor="tpl-area-filter" className="text-xs font-medium uppercase tracking-wide text-gray-500">
               House area
             </label>
@@ -603,7 +633,7 @@ export default function TemplatesView({ members, editorMemberId }: TemplatesView
               onChange={(e) =>
                 setHouseAreaFilter(e.target.value === 'all' ? 'all' : (e.target.value as ChoreHouseAreaCode))
               }
-              className="w-full max-w-[16rem] rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm shadow-sm"
+              className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm shadow-sm lg:max-w-[16rem]"
             >
               <option value="all">All areas</option>
               {CHORE_HOUSE_AREAS.map((code) => (
@@ -613,7 +643,7 @@ export default function TemplatesView({ members, editorMemberId }: TemplatesView
               ))}
             </select>
           </div>
-          <div className="flex min-w-[10rem] flex-col gap-1">
+          <div className="flex min-w-0 flex-col gap-1 lg:min-w-[10rem]">
             <label htmlFor="tpl-child-filter" className="text-xs font-medium uppercase tracking-wide text-gray-500">
               Child / person
             </label>
@@ -624,7 +654,7 @@ export default function TemplatesView({ members, editorMemberId }: TemplatesView
                 const v = e.target.value;
                 setChildFilterId(v === 'all' ? 'all' : parseInt(v, 10));
               }}
-              className="w-full max-w-[14rem] rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm shadow-sm"
+              className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm shadow-sm lg:max-w-[14rem]"
             >
               <option value="all">Everyone</option>
               {filterBarMembers.map((m) => (
@@ -634,7 +664,7 @@ export default function TemplatesView({ members, editorMemberId }: TemplatesView
               ))}
             </select>
           </div>
-          <div className="flex min-w-[9rem] flex-col gap-1">
+          <div className="flex min-w-0 flex-col gap-1 lg:min-w-[9rem]">
             <label htmlFor="tpl-day-filter" className="text-xs font-medium uppercase tracking-wide text-gray-500">
               Day of week
             </label>
@@ -645,7 +675,7 @@ export default function TemplatesView({ members, editorMemberId }: TemplatesView
                 const v = e.target.value;
                 setWeekdayFilter(v === 'all' ? 'all' : parseInt(v, 10));
               }}
-              className="w-full max-w-[12rem] rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm shadow-sm"
+              className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm shadow-sm lg:max-w-[12rem]"
             >
               <option value="all">Any day</option>
               {WEEKDAY_OPTIONS.map((d) => (
@@ -655,7 +685,7 @@ export default function TemplatesView({ members, editorMemberId }: TemplatesView
               ))}
             </select>
           </div>
-          <div className="flex min-w-[8rem] flex-col gap-1">
+          <div className="flex min-w-0 flex-col gap-1 lg:min-w-[8rem]">
             <label htmlFor="tpl-block-filter" className="text-xs font-medium uppercase tracking-wide text-gray-500">
               Time of day
             </label>
@@ -663,7 +693,7 @@ export default function TemplatesView({ members, editorMemberId }: TemplatesView
               id="tpl-block-filter"
               value={timeBlockFilter}
               onChange={(e) => setTimeBlockFilter(e.target.value as (typeof TIME_BLOCKS)[number] | 'all')}
-              className="w-full max-w-[11rem] rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm shadow-sm"
+              className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm shadow-sm lg:max-w-[11rem]"
             >
               <option value="all">Any time</option>
               {TIME_BLOCKS.map((tb) => (
@@ -673,7 +703,7 @@ export default function TemplatesView({ members, editorMemberId }: TemplatesView
               ))}
             </select>
           </div>
-          <div className="flex min-w-[10rem] flex-col gap-1">
+          <div className="flex min-w-0 flex-col gap-1 lg:min-w-[10rem]">
             <label htmlFor="tpl-freq-filter" className="text-xs font-medium uppercase tracking-wide text-gray-500">
               How often
             </label>
@@ -681,7 +711,7 @@ export default function TemplatesView({ members, editorMemberId }: TemplatesView
               id="tpl-freq-filter"
               value={frequencyFilter}
               onChange={(e) => setFrequencyFilter(e.target.value)}
-              className="w-full max-w-[16rem] rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm shadow-sm"
+              className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm shadow-sm lg:max-w-[16rem]"
             >
               <option value="all">Any schedule</option>
               {FREQUENCY_TYPES.map((f) => (
@@ -691,7 +721,7 @@ export default function TemplatesView({ members, editorMemberId }: TemplatesView
               ))}
             </select>
           </div>
-          <div className="flex min-w-[8rem] flex-col gap-1">
+          <div className="flex min-w-0 flex-col gap-1 lg:min-w-[8rem]">
             <label htmlFor="tpl-active-filter" className="text-xs font-medium uppercase tracking-wide text-gray-500">
               Status
             </label>
@@ -699,7 +729,7 @@ export default function TemplatesView({ members, editorMemberId }: TemplatesView
               id="tpl-active-filter"
               value={activeFilter}
               onChange={(e) => setActiveFilter(e.target.value as 'all' | 'active' | 'inactive')}
-              className="w-full max-w-[11rem] rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm shadow-sm"
+              className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm shadow-sm lg:max-w-[11rem]"
             >
               <option value="all">Active &amp; inactive</option>
               <option value="active">Active only</option>
@@ -708,7 +738,7 @@ export default function TemplatesView({ members, editorMemberId }: TemplatesView
           </div>
           <button
             type="button"
-            className="self-end rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-800 hover:bg-gray-50"
+            className="justify-self-start rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-800 hover:bg-gray-50 sm:col-span-2 lg:col-span-1 lg:self-end"
             onClick={() => {
               setCategoryFilterId('all');
               setHouseAreaFilter('all');
@@ -723,11 +753,11 @@ export default function TemplatesView({ members, editorMemberId }: TemplatesView
           </button>
         </div>
       {canEdit && (
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
           <button
             type="button"
             onClick={openCreate}
-              className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-blue-700"
+              className="w-full rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-medium text-white shadow-sm hover:bg-blue-700 sm:w-auto sm:py-2"
           >
               New task template
           </button>
@@ -735,7 +765,7 @@ export default function TemplatesView({ members, editorMemberId }: TemplatesView
               type="button"
               disabled={importParsing}
               onClick={() => importFileRef.current?.click()}
-              className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-800 shadow-sm hover:bg-gray-50 disabled:opacity-50"
+              className="w-full rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm font-medium text-gray-800 shadow-sm hover:bg-gray-50 disabled:opacity-50 sm:w-auto sm:py-2"
             >
               {importParsing ? 'Reading file…' : 'Import from PDF, image, or .txt'}
             </button>
@@ -862,7 +892,95 @@ export default function TemplatesView({ members, editorMemberId }: TemplatesView
         </div>
       )}
 
-      <div className="overflow-x-auto rounded-lg border border-gray-200 shadow-sm">
+      <ul className="space-y-3 lg:hidden" aria-label="Task templates">
+        {filteredTemplates.map((t) => (
+          <li
+            key={t.id}
+            className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm"
+          >
+            <div className="flex gap-3 border-b border-gray-100 pb-3">
+              {canEdit && (
+                <input
+                  type="checkbox"
+                  className="mt-1 h-5 w-5 shrink-0 rounded border-gray-300"
+                  disabled={bulkBusy}
+                  checked={selectedTemplateIds.has(t.id)}
+                  onChange={() => toggleTemplateSelected(t.id)}
+                  aria-label={`Select ${t.name}`}
+                />
+              )}
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="font-medium text-gray-900">{t.name}</span>
+                  <span
+                    className={`rounded-full px-2 py-0.5 text-xs font-medium ${
+                      t.active ? 'bg-emerald-100 text-emerald-800' : 'bg-gray-200 text-gray-700'
+                    }`}
+                  >
+                    {t.active ? 'Active' : 'Inactive'}
+                  </span>
+                  <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-700">
+                    {t.pointsBase} pts
+                  </span>
+                </div>
+                {t.description ? (
+                  <p className="mt-1 text-xs text-gray-600">{t.description}</p>
+                ) : null}
+              </div>
+            </div>
+            <dl className="mt-3 grid grid-cols-1 gap-2 text-sm text-gray-800 sm:grid-cols-2">
+              <div>
+                <dt className="text-xs font-medium uppercase tracking-wide text-gray-500">Category</dt>
+                <dd className="mt-0.5">{t.category.name}</dd>
+              </div>
+              <div>
+                <dt className="text-xs font-medium uppercase tracking-wide text-gray-500">House area</dt>
+                <dd className="mt-0.5">
+                  {normalizeHouseArea(t.houseArea) === 'NONE'
+                    ? '—'
+                    : CHORE_HOUSE_AREA_LABELS[normalizeHouseArea(t.houseArea)]}
+                </dd>
+              </div>
+              <div className="sm:col-span-2">
+                <dt className="text-xs font-medium uppercase tracking-wide text-gray-500">Who</dt>
+                <dd className="mt-0.5 text-gray-700">
+                  <TemplateWhoSummary t={t} />
+                </dd>
+              </div>
+              <div>
+                <dt className="text-xs font-medium uppercase tracking-wide text-gray-500">Schedule</dt>
+                <dd className="mt-0.5 text-gray-600">{FREQUENCY_LABELS[t.frequencyType] ?? t.frequencyType}</dd>
+              </div>
+              <div>
+                <dt className="text-xs font-medium uppercase tracking-wide text-gray-500">When</dt>
+                <dd className="mt-0.5 text-gray-600">
+                  <TemplateWhenSummary t={t} />
+                </dd>
+              </div>
+            </dl>
+            {canEdit && (
+              <div className="mt-3 flex flex-wrap gap-2 border-t border-gray-100 pt-3">
+                <button
+                  type="button"
+                  onClick={() => openEdit(t)}
+                  className="rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-blue-700 hover:bg-gray-50"
+                >
+                  Edit
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleDelete(t.id)}
+                  className="rounded-lg border border-red-200 bg-white px-4 py-2 text-sm font-medium text-red-600 hover:bg-red-50"
+                >
+                  Delete
+                </button>
+              </div>
+            )}
+          </li>
+        ))}
+      </ul>
+
+      <div className="hidden overflow-x-auto rounded-lg border border-gray-200 shadow-sm lg:block">
         <table className="min-w-full divide-y divide-gray-200 text-sm">
           <thead className="bg-gray-50">
             <tr>
@@ -919,30 +1037,11 @@ export default function TemplatesView({ members, editorMemberId }: TemplatesView
                     : CHORE_HOUSE_AREA_LABELS[normalizeHouseArea(t.houseArea)]}
                 </td>
                 <td className="px-3 py-2 text-gray-700">
-                  {t.anyoneMayComplete ? (
-                    <span>
-                      <span className="font-medium text-gray-900">Anyone</span>
-                      {t.assignees.length > 0 ? (
-                        <span className="text-gray-600">
-                          {' '}
-                          · optional hints: {t.assignees.map((a) => a.member.name).join(', ')}
-                        </span>
-                      ) : null}
-                    </span>
-                  ) : (
-                    t.assignees.map((a) => a.member.name).join(', ') || '—'
-                  )}
+                  <TemplateWhoSummary t={t} />
                 </td>
                 <td className="px-3 py-2 text-gray-600">{FREQUENCY_LABELS[t.frequencyType] ?? t.frequencyType}</td>
                 <td className="px-3 py-2 text-gray-600">
-                  {t.timeBlock}
-                  {t.dayOfWeek != null && t.frequencyType === 'WEEKLY' && (
-                    <span className="text-gray-500"> · {WEEKDAY_OPTIONS.find((d) => d.v === t.dayOfWeek)?.label}</span>
-                  )}
-                  {t.weekOfMonth != null && <span className="text-gray-500"> · week {t.weekOfMonth}</span>}
-                  {t.conditionalAfterTime && (
-                    <span className="text-gray-500"> · after {t.conditionalAfterTime}</span>
-                  )}
+                  <TemplateWhenSummary t={t} />
                 </td>
                 <td className="px-3 py-2 text-right text-gray-800">{t.pointsBase}</td>
                 {canEdit && (
@@ -970,9 +1069,9 @@ export default function TemplatesView({ members, editorMemberId }: TemplatesView
       </div>
 
       {modalOpen && canEdit && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 p-4">
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/45 p-0 sm:items-center sm:p-4">
           <div
-            className="max-h-[92vh] w-full max-w-xl overflow-y-auto rounded-xl bg-white p-6 shadow-2xl ring-1 ring-black/5"
+            className="max-h-[90vh] w-full max-w-xl overflow-y-auto rounded-t-2xl bg-white p-4 shadow-2xl ring-1 ring-black/5 sm:rounded-xl sm:p-6"
             role="dialog"
             aria-modal="true"
             aria-labelledby="tpl-modal-title"
@@ -1261,11 +1360,11 @@ export default function TemplatesView({ members, editorMemberId }: TemplatesView
               </label>
             </div>
 
-            <div className="mt-8 flex flex-wrap justify-end gap-2 border-t border-gray-100 pt-4">
+            <div className="mt-8 flex flex-col-reverse gap-2 border-t border-gray-100 pt-4 sm:flex-row sm:flex-wrap sm:justify-end">
               <button
                 type="button"
                 onClick={closeModal}
-                className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                className="w-full rounded-lg border border-gray-300 px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 sm:w-auto sm:py-2"
               >
                 Cancel
               </button>
@@ -1273,7 +1372,7 @@ export default function TemplatesView({ members, editorMemberId }: TemplatesView
                 type="button"
                 disabled={saving}
                 onClick={() => void handleSave()}
-                className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+                className="w-full rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50 sm:w-auto sm:py-2"
               >
                 {saving ? 'Saving…' : 'Save template'}
               </button>
@@ -1283,9 +1382,9 @@ export default function TemplatesView({ members, editorMemberId }: TemplatesView
       )}
 
       {importReviewOpen && canEdit && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/45 p-2 sm:p-4">
+        <div className="fixed inset-0 z-[60] flex items-end justify-center bg-black/45 p-0 sm:items-center sm:p-2 md:p-4">
           <div
-            className="max-h-[92vh] w-full max-w-5xl overflow-hidden rounded-xl bg-white shadow-2xl ring-1 ring-black/5 flex flex-col"
+            className="flex max-h-[95vh] w-full max-w-5xl flex-col overflow-hidden rounded-t-2xl bg-white shadow-2xl ring-1 ring-black/5 sm:max-h-[92vh] sm:rounded-xl"
             role="dialog"
             aria-modal="true"
             aria-labelledby="import-review-title"
@@ -1310,6 +1409,258 @@ export default function TemplatesView({ members, editorMemberId }: TemplatesView
               ) : null}
             </div>
             <div className="min-h-0 flex-1 overflow-auto px-2 py-3 sm:px-4">
+              <div className="space-y-4 pb-1 lg:hidden" aria-label="Imported tasks (mobile)">
+                {importRows.map((row, idx) => (
+                  <div
+                    key={`import-mobile-${idx}`}
+                    className="space-y-3 rounded-lg border border-gray-200 bg-white p-4 shadow-sm"
+                  >
+                    <label className="flex cursor-pointer items-center gap-2 text-sm font-medium text-gray-900">
+                      <input
+                        type="checkbox"
+                        checked={row.selected}
+                        onChange={() =>
+                          setImportRows((rows) =>
+                            rows.map((r, i) => (i === idx ? { ...r, selected: !r.selected } : r))
+                          )
+                        }
+                      />
+                      Use this row when adding
+                    </label>
+                    <div>
+                      <span className="text-xs font-medium uppercase tracking-wide text-gray-500">Task</span>
+                      <input
+                        className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm"
+                        value={row.name}
+                        onChange={(e) =>
+                          setImportRows((rows) =>
+                            rows.map((r, i) => (i === idx ? { ...r, name: e.target.value } : r))
+                          )
+                        }
+                      />
+                    </div>
+                    <div>
+                      <span className="text-xs font-medium uppercase tracking-wide text-gray-500">Description</span>
+                      <textarea
+                        className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm"
+                        rows={2}
+                        placeholder="Optional"
+                        value={row.description ?? ''}
+                        onChange={(e) =>
+                          setImportRows((rows) =>
+                            rows.map((r, i) => (i === idx ? { ...r, description: e.target.value || null } : r))
+                          )
+                        }
+                      />
+                    </div>
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                      <div>
+                        <span className="text-xs font-medium uppercase tracking-wide text-gray-500">Category</span>
+                        <select
+                          className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm"
+                          value={row.categoryId}
+                          onChange={(e) =>
+                            setImportRows((rows) =>
+                              rows.map((r, i) =>
+                                i === idx
+                                  ? { ...r, categoryId: parseInt(e.target.value, 10), categoryMatch: 'exact' }
+                                  : r
+                              )
+                            )
+                          }
+                        >
+                          {sortedCategories.map((c) => (
+                            <option key={c.id} value={c.id}>
+                              {c.name}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <div className="flex flex-col justify-end">
+                        <span className="text-xs font-medium uppercase tracking-wide text-gray-500">Match</span>
+                        <p className="mt-1 text-sm text-gray-700">
+                          {row.categoryMatch === 'exact'
+                            ? 'Exact'
+                            : row.categoryMatch === 'partial'
+                              ? 'Partial'
+                              : row.categoryMatch === 'suggested'
+                                ? 'Inferred'
+                                : 'Guess'}
+                        </p>
+                      </div>
+                    </div>
+                    {!row.anyoneMayComplete && (
+                      <div>
+                        <span className="text-xs font-medium uppercase tracking-wide text-gray-500">Assignees</span>
+                        <div className="mt-2 flex flex-col gap-2">
+                          {(assignableMembers.length > 0 ? assignableMembers : members).map((m) => (
+                            <label key={m.id} className="flex cursor-pointer items-center gap-2 text-sm text-gray-800">
+                              <input
+                                type="checkbox"
+                                checked={row.assigneeIds.includes(m.id)}
+                                onChange={() =>
+                                  setImportRows((rows) =>
+                                    rows.map((r, i) =>
+                                      i === idx
+                                        ? {
+                                            ...r,
+                                            assigneeIds: toggleAssignee(r.assigneeIds, m.id, false),
+                                          }
+                                        : r
+                                    )
+                                  )
+                                }
+                              />
+                              <span>{m.name}</span>
+                            </label>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                      <div>
+                        <span className="text-xs font-medium uppercase tracking-wide text-gray-500">House area</span>
+                        <select
+                          className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm"
+                          value={normalizeHouseArea(row.houseArea)}
+                          onChange={(e) =>
+                            setImportRows((rows) =>
+                              rows.map((r, i) =>
+                                i === idx ? { ...r, houseArea: e.target.value as ChoreHouseAreaCode } : r
+                              )
+                            )
+                          }
+                        >
+                          {CHORE_HOUSE_AREAS.map((code) => (
+                            <option key={code} value={code}>
+                              {CHORE_HOUSE_AREA_LABELS[code]}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <label className="flex cursor-pointer items-center gap-2 self-end text-sm text-gray-800 sm:pt-6">
+                        <input
+                          type="checkbox"
+                          title="Anyone in the household may complete (no fixed assignee)"
+                          checked={row.anyoneMayComplete}
+                          onChange={(e) =>
+                            setImportRows((rows) =>
+                              rows.map((r, i) => {
+                                if (i !== idx) return r;
+                                const on = e.target.checked;
+                                if (on) return { ...r, anyoneMayComplete: true, assigneeIds: [] };
+                                const fb = defaultAssigneeIdsForNewTemplate();
+                                return {
+                                  ...r,
+                                  anyoneMayComplete: false,
+                                  assigneeIds: r.assigneeIds.length > 0 ? r.assigneeIds : fb,
+                                };
+                              })
+                            )
+                          }
+                        />
+                        Anyone may complete
+                      </label>
+                    </div>
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                      <div>
+                        <span className="text-xs font-medium uppercase tracking-wide text-gray-500">How often</span>
+                        <select
+                          className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm"
+                          value={row.frequencyType}
+                          onChange={(e) =>
+                            setImportRows((rows) =>
+                              rows.map((r, i) => (i === idx ? { ...r, frequencyType: e.target.value } : r))
+                            )
+                          }
+                        >
+                          {FREQUENCY_TYPES.map((f) => (
+                            <option key={f} value={f}>
+                              {FREQUENCY_LABELS[f] ?? f}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <div>
+                        <span className="text-xs font-medium uppercase tracking-wide text-gray-500">Time block</span>
+                        <select
+                          className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm"
+                          value={row.timeBlock}
+                          onChange={(e) =>
+                            setImportRows((rows) =>
+                              rows.map((r, i) => (i === idx ? { ...r, timeBlock: e.target.value } : r))
+                            )
+                          }
+                        >
+                          {TIME_BLOCKS.map((tb) => (
+                            <option key={tb} value={tb}>
+                              {tb}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <div>
+                        <span className="text-xs font-medium uppercase tracking-wide text-gray-500">Weekday</span>
+                        <select
+                          className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm disabled:opacity-40"
+                          disabled={row.frequencyType !== 'WEEKLY'}
+                          value={row.dayOfWeek == null ? '' : String(row.dayOfWeek)}
+                          onChange={(e) =>
+                            setImportRows((rows) =>
+                              rows.map((r, i) =>
+                                i === idx
+                                  ? {
+                                      ...r,
+                                      dayOfWeek:
+                                        e.target.value === '' ? null : parseInt(e.target.value, 10),
+                                    }
+                                  : r
+                              )
+                            )
+                          }
+                        >
+                          {IMPORT_WEEKDAY_OPTIONS.map((d) => (
+                            <option key={d.v === '' ? 'none' : d.v} value={d.v}>
+                              {d.label}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <div>
+                        <span className="text-xs font-medium uppercase tracking-wide text-gray-500">
+                          Week of month
+                        </span>
+                        <select
+                          className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm disabled:opacity-40"
+                          disabled={row.frequencyType !== 'MONTHLY'}
+                          value={row.weekOfMonth == null ? '' : String(row.weekOfMonth)}
+                          onChange={(e) =>
+                            setImportRows((rows) =>
+                              rows.map((r, i) =>
+                                i === idx
+                                  ? {
+                                      ...r,
+                                      weekOfMonth:
+                                        e.target.value === '' ? null : parseInt(e.target.value, 10),
+                                    }
+                                  : r
+                              )
+                            )
+                          }
+                        >
+                          <option value="">Not set</option>
+                          {[1, 2, 3, 4].map((w) => (
+                            <option key={w} value={w}>
+                              {w}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <div className="hidden overflow-x-auto lg:block">
               <table className="min-w-full text-left text-xs sm:text-sm">
                 <thead className="sticky top-0 bg-gray-50 text-gray-700">
                   <tr>
@@ -1559,14 +1910,15 @@ export default function TemplatesView({ members, editorMemberId }: TemplatesView
                   ))}
                 </tbody>
               </table>
+              </div>
             </div>
-            <div className="flex flex-wrap justify-end gap-2 border-t border-gray-100 px-4 py-3 sm:px-6">
+            <div className="flex flex-col gap-2 border-t border-gray-100 px-4 py-3 sm:flex-row sm:flex-wrap sm:justify-end sm:gap-2 sm:px-6">
               <button
                 type="button"
                 onClick={() => {
                   setImportRows((rows) => rows.map((r) => ({ ...r, selected: true })));
                 }}
-                className="rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm text-gray-700 hover:bg-gray-50 sm:w-auto sm:py-2"
               >
                 Select all
               </button>
@@ -1575,14 +1927,14 @@ export default function TemplatesView({ members, editorMemberId }: TemplatesView
                 onClick={() => {
                   setImportRows((rows) => rows.map((r) => ({ ...r, selected: false })));
                 }}
-                className="rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm text-gray-700 hover:bg-gray-50 sm:w-auto sm:py-2"
               >
                 Clear selection
               </button>
               <button
                 type="button"
                 onClick={closeImportReview}
-                className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                className="w-full rounded-lg border border-gray-300 px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 sm:w-auto sm:py-2"
               >
                 Cancel
               </button>
@@ -1590,7 +1942,7 @@ export default function TemplatesView({ members, editorMemberId }: TemplatesView
                 type="button"
                 disabled={importBulkSaving}
                 onClick={() => void commitImportSelected()}
-                className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+                className="w-full rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50 sm:w-auto sm:py-2"
               >
                 {importBulkSaving ? 'Adding…' : `Add ${importRows.filter((r) => r.selected).length} template(s)`}
               </button>

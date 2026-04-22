@@ -189,12 +189,13 @@ export default function Projects() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h2 className="text-2xl font-bold text-gray-900">Projects</h2>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <h2 className="text-xl font-bold text-gray-900 sm:text-2xl">Projects</h2>
         {!isCreating && (
           <button
+            type="button"
             onClick={() => setIsCreating(true)}
-            className="px-4 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors"
+            className="w-full rounded-lg bg-blue-600 px-4 py-2.5 font-medium text-white transition-colors hover:bg-blue-700 sm:w-auto sm:py-2"
           >
             + Create Project
           </button>
@@ -208,8 +209,8 @@ export default function Projects() {
       )}
 
       {isCreating && (
-        <div className="bg-gray-50 rounded-lg border border-gray-200 p-6">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4">Create New Project</h3>
+        <div className="rounded-lg border border-gray-200 bg-gray-50 p-4 sm:p-6">
+          <h3 className="mb-4 text-lg font-semibold text-gray-900">Create New Project</h3>
           <form onSubmit={handleCreate} className="space-y-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -236,7 +237,7 @@ export default function Projects() {
               />
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Start Date *
@@ -301,14 +302,7 @@ export default function Projects() {
               </div>
             )}
 
-            <div className="flex gap-3">
-              <button
-                type="submit"
-                disabled={isSubmitting}
-                className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed"
-              >
-                {isSubmitting ? 'Creating...' : 'Create Project'}
-              </button>
+            <div className="flex flex-col-reverse gap-2 sm:flex-row sm:gap-3">
               <button
                 type="button"
                 onClick={() => {
@@ -321,9 +315,16 @@ export default function Projects() {
                   setBonusRate('1');
                   setStatus('active');
                 }}
-                className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg font-medium hover:bg-gray-300 transition-colors"
+                className="w-full rounded-lg bg-gray-200 px-4 py-2.5 font-medium text-gray-700 transition-colors hover:bg-gray-300 sm:w-auto sm:py-2"
               >
                 Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={isSubmitting}
+                className="w-full flex-1 rounded-lg bg-blue-600 px-4 py-2.5 font-medium text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-gray-400 sm:w-auto sm:py-2"
+              >
+                {isSubmitting ? 'Creating...' : 'Create Project'}
               </button>
             </div>
           </form>
@@ -339,7 +340,7 @@ export default function Projects() {
           {projects.map((project) => (
             <div
               key={project.id}
-              className={`p-4 rounded-lg border ${
+              className={`rounded-lg border p-4 sm:p-5 ${
                 project.status === 'active' ? 'bg-green-50 border-green-200' : 'bg-gray-50 border-gray-200'
               }`}
             >
@@ -370,7 +371,7 @@ export default function Projects() {
                     />
                   </div>
 
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">
                         Start Date *
@@ -399,7 +400,7 @@ export default function Projects() {
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">
                         Bonus Rate (points per hour) *
@@ -437,46 +438,48 @@ export default function Projects() {
                     </div>
                   )}
 
-                  <div className="flex gap-3">
-                    <button
-                      type="submit"
-                      disabled={isSubmitting}
-                      className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed"
-                    >
-                      {isSubmitting ? 'Saving...' : 'Save Changes'}
-                    </button>
+                  <div className="flex flex-col-reverse gap-2 sm:flex-row sm:gap-3">
                     <button
                       type="button"
                       onClick={handleCancelEdit}
                       disabled={isSubmitting}
-                      className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg font-medium hover:bg-gray-300 transition-colors disabled:opacity-50"
+                      className="w-full rounded-lg bg-gray-200 px-4 py-2.5 font-medium text-gray-700 transition-colors hover:bg-gray-300 disabled:opacity-50 sm:w-auto sm:py-2"
                     >
                       Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={isSubmitting}
+                      className="w-full flex-1 rounded-lg bg-blue-600 px-4 py-2.5 font-medium text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-gray-400 sm:w-auto sm:py-2"
+                    >
+                      {isSubmitting ? 'Saving...' : 'Save Changes'}
                     </button>
                   </div>
                 </form>
               ) : (
                 <>
-                  <div className="flex items-start justify-between">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2 mb-2">
+                  <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                    <div className="min-w-0 flex-1">
+                      <div className="mb-2 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
                         <h3 className="text-lg font-semibold text-gray-900">{project.name}</h3>
-                        <span className={`text-xs px-2 py-1 rounded ${
-                          project.status === 'active' ? 'bg-green-200 text-green-800' : 'bg-gray-200 text-gray-800'
-                        }`}>
-                          {project.status}
-                        </span>
-                        <span className="text-xs px-2 py-1 rounded bg-purple-200 text-purple-800">
-                          {project.bonus_rate} pts/hour
-                        </span>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className={`rounded px-2 py-1 text-xs ${
+                            project.status === 'active' ? 'bg-green-200 text-green-800' : 'bg-gray-200 text-gray-800'
+                          }`}>
+                            {project.status}
+                          </span>
+                          <span className="rounded bg-purple-200 px-2 py-1 text-xs text-purple-800">
+                            {project.bonus_rate} pts/hour
+                          </span>
+                        </div>
                       </div>
                       {project.description && (
-                        <p className="text-sm text-gray-700 mb-2">{project.description}</p>
+                        <p className="mb-2 text-sm text-gray-700">{project.description}</p>
                       )}
-                      <div className="text-xs text-gray-500 mb-3">
+                      <div className="mb-3 flex flex-col gap-1 text-xs text-gray-500 sm:flex-row sm:flex-wrap sm:gap-x-4">
                         <span>Start: {new Date(project.start_date).toLocaleDateString()}</span>
                         {project.end_date && (
-                          <span className="ml-4">End: {new Date(project.end_date).toLocaleDateString()}</span>
+                          <span>End: {new Date(project.end_date).toLocaleDateString()}</span>
                         )}
                       </div>
                       
@@ -508,16 +511,18 @@ export default function Projects() {
                         </div>
                       )}
                     </div>
-                    <div className="flex gap-2">
+                    <div className="flex w-full shrink-0 flex-col gap-2 sm:w-auto sm:flex-row sm:justify-end">
                       <button
+                        type="button"
                         onClick={() => handleEdit(project)}
-                        className="px-3 py-1 text-sm bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors"
+                        className="w-full rounded-lg bg-gray-200 px-4 py-2.5 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-300 sm:w-auto sm:px-3 sm:py-1"
                       >
                         Edit
                       </button>
                       <button
+                        type="button"
                         onClick={() => handleDelete(project.id)}
-                        className="px-3 py-1 text-sm bg-red-200 text-red-700 rounded-lg hover:bg-red-300 transition-colors"
+                        className="w-full rounded-lg bg-red-200 px-4 py-2.5 text-sm font-medium text-red-700 transition-colors hover:bg-red-300 sm:w-auto sm:px-3 sm:py-1"
                       >
                         Delete
                       </button>

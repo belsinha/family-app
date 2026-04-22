@@ -127,21 +127,21 @@ export default function ChildView() {
   }
 
   return (
-    <div className="max-w-4xl mx-auto">
-      <div className="bg-white rounded-lg shadow-md p-6 mb-6">
-        <h2 className="text-2xl font-bold text-gray-900 mb-4">Welcome, {child.name}!</h2>
-        
-        <div className="grid grid-cols-3 gap-4 mb-6">
-          <div className="bg-green-50 rounded-lg p-4">
-            <div className="text-sm text-green-600 font-medium">Bonus Points</div>
+    <div className="mx-auto max-w-4xl">
+      <div className="mb-6 rounded-lg bg-white p-4 shadow-md sm:p-6">
+        <h2 className="mb-4 text-xl font-bold text-gray-900 sm:text-2xl">Welcome, {child.name}!</h2>
+
+        <div className="mb-6 grid grid-cols-1 gap-3 sm:grid-cols-3 sm:gap-4">
+          <div className="rounded-lg bg-green-50 p-4">
+            <div className="text-sm font-medium text-green-600">Bonus Points</div>
             <div className="text-2xl font-bold text-green-700">{balance.bonus}</div>
           </div>
-          <div className="bg-red-50 rounded-lg p-4">
-            <div className="text-sm text-red-600 font-medium">Demerit Points</div>
+          <div className="rounded-lg bg-red-50 p-4">
+            <div className="text-sm font-medium text-red-600">Demerit Points</div>
             <div className="text-2xl font-bold text-red-700">{balance.demerit}</div>
           </div>
-          <div className="bg-blue-50 rounded-lg p-4">
-            <div className="text-sm text-blue-600 font-medium">Balance</div>
+          <div className="rounded-lg bg-blue-50 p-4">
+            <div className="text-sm font-medium text-blue-600">Balance</div>
             <div className="text-2xl font-bold text-blue-700">{balance.balance}</div>
           </div>
         </div>
@@ -197,7 +197,7 @@ export default function ChildView() {
         />
       </div>
 
-      <div className="bg-white rounded-lg shadow-md p-6 mb-6">
+      <div className="mb-6 rounded-lg bg-white p-4 shadow-md sm:p-6">
         <div className="flex items-center justify-between mb-4">
           <div>
             <h3 className="text-xl font-bold text-gray-900 mb-2">Work Logs</h3>
@@ -255,7 +255,7 @@ export default function ChildView() {
         )}
       </div>
 
-      <div className="bg-white rounded-lg shadow-md p-6 mb-6">
+      <div className="mb-6 rounded-lg bg-white p-4 shadow-md sm:p-6">
         <div className="mb-4">
           <h3 className="text-xl font-bold text-gray-900 mb-2">Challenges</h3>
           <p className="text-sm text-gray-500">Goals set for you; log progress and mark complete by the deadline.</p>
@@ -277,8 +277,8 @@ export default function ChildView() {
                     : 'bg-gray-50 border-gray-200'
                 }`}
               >
-                <div className="flex items-start justify-between gap-2">
-                  <div className="flex-1 min-w-0">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-2">
+                  <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2 flex-wrap mb-1">
                       <span className="font-semibold text-gray-900">{c.title}</span>
                       <span
@@ -317,7 +317,7 @@ export default function ChildView() {
                         console.error('Failed to load challenge:', err);
                       }
                     }}
-                    className="px-3 py-1.5 bg-amber-600 text-white text-sm font-medium rounded hover:bg-amber-700 whitespace-nowrap"
+                    className="w-full rounded bg-amber-600 px-3 py-2.5 text-sm font-medium text-white hover:bg-amber-700 sm:w-auto sm:py-1.5"
                   >
                     {selectedChallenge?.id === c.id ? 'Hide' : 'View & log progress'}
                   </button>
@@ -429,7 +429,7 @@ export default function ChildView() {
         )}
       </div>
 
-      <div className="bg-white rounded-lg shadow-md p-6 mb-6">
+      <div className="mb-6 rounded-lg bg-white p-4 shadow-md sm:p-6">
         <div className="flex items-center justify-between mb-4">
           <div>
             <h3 className="text-xl font-bold text-gray-900 mb-2">Recent Points</h3>
