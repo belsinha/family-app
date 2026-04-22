@@ -1,4 +1,5 @@
 import { PrismaClient } from '@prisma/client';
+import { execSync } from 'node:child_process';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'node:url';
@@ -76,6 +77,34 @@ function ensureChoresDatabaseUrl(): void {
 }
 
 ensureChoresDatabaseUrl();
+
+/**
+ * Apply Prisma migrations before the client touches the DB. The previous shell-only step
+ * (`prisma migrate deploy` without `npx`) often failed on PATH and left an empty SQLite file
+ * (then "table HouseholdMember does not exist").
+ */
+function runChoresPrismaMigrateSync(): void {
+  if (process.env.CHORES_SKIP_MIGRATE_ON_START === '1') {
+    return;
+  }
+  const url = process.env.CHORES_DATABASE_URL ?? '';
+  if (!url.startsWith('file:')) {
+    return;
+  }
+  try {
+    console.log('[chores-db] Applying Prisma migrations (migrate deploy)…');
+    execSync('npx prisma migrate deploy', {
+      cwd: backendRoot,
+      stdio: 'inherit',
+      env: process.env,
+    });
+  } catch (err) {
+    console.error('[chores-db] prisma migrate deploy failed. Fix migrations or CHORES_DATABASE_URL.');
+    throw err;
+  }
+}
+
+runChoresPrismaMigrateSync();
 
 const globalForPrisma = globalThis as unknown as { prisma: PrismaClient };
 
