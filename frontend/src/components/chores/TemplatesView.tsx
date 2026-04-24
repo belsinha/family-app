@@ -13,6 +13,11 @@ import {
   normalizeHouseArea,
   type ChoreHouseAreaCode,
 } from '../../constants/choreHouseArea';
+import {
+  assigneeIdsFromNames,
+  buildChoresBackupFile,
+  parseChoresBackupJson,
+} from './choresBackup';
 
 const FREQUENCY_TYPES = [
   'DAILY',
@@ -33,6 +38,9 @@ const FREQUENCY_LABELS: Record<string, string> = {
 };
 
 const TIME_BLOCKS = ['MORNING', 'AFTERNOON', 'NIGHT', 'ANY'] as const;
+
+const CHORES_TEMPLATE_DRAFT_STORAGE_KEY = 'family-app-chores-template-unsaved-v1';
+const CHORES_TEMPLATE_DRAFT_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 
 const WEEKDAY_OPTIONS = [
   { v: 0, label: 'Sunday' },
@@ -116,6 +124,13 @@ function emptyDraft(categories: ChoreCategory[], members: ChoreHouseholdMember[]
     pointsBase: '1',
     active: true,
   };
+}
+
+function draftFingerprint(d: Draft): string {
+  return JSON.stringify({
+    ...d,
+    assigneeIds: [...d.assigneeIds].sort((a, b) => a - b),
+  });
 }
 
 function parseOptionalInt(s: string): number | null {
@@ -217,7 +232,10 @@ export default function TemplatesView({ members, editorMemberId }: TemplatesView
   const [renamingCategoryValue, setRenamingCategoryValue] = useState('');
   const [selectedTemplateIds, setSelectedTemplateIds] = useState<Set<number>>(() => new Set());
   const [bulkBusy, setBulkBusy] = useState(false);
+  const [draftBaseline, setDraftBaseline] = useState<Draft | null>(null);
+  const [backupBusy, setBackupBusy] = useState(false);
   const selectAllFilteredRef = useRef<HTMLInputElement>(null);
+  const backupRestoreFileRef = useRef<HTMLInputElement>(null);
 
   const canEdit = editorMemberId != null;
 
@@ -236,6 +254,49 @@ export default function TemplatesView({ members, editorMemberId }: TemplatesView
   useEffect(() => {
     loadAll();
   }, []);
+
+  const draftDirty = useMemo(() => {
+    if (!modalOpen || draftBaseline == null) return false;
+    return draftFingerprint(draft) !== draftFingerprint(draftBaseline);
+  }, [modalOpen, draft, draftBaseline]);
+
+  useEffect(() => {
+    if (!modalOpen || !draftDirty) {
+      try {
+        if (!modalOpen || !draftDirty) {
+          sessionStorage.removeItem(CHORES_TEMPLATE_DRAFT_STORAGE_KEY);
+        }
+      } catch {
+        /* noop */
+      }
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      try {
+        sessionStorage.setItem(
+          CHORES_TEMPLATE_DRAFT_STORAGE_KEY,
+          JSON.stringify({
+            editingId,
+            draft,
+            savedAt: Date.now(),
+          })
+        );
+      } catch {
+        /* quota or private mode */
+      }
+    }, 500);
+    return () => window.clearTimeout(timer);
+  }, [modalOpen, draftDirty, editingId, draft]);
+
+  useEffect(() => {
+    if (!modalOpen || !draftDirty) return;
+    const onBeforeUnload = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = '';
+    };
+    window.addEventListener('beforeunload', onBeforeUnload);
+    return () => window.removeEventListener('beforeunload', onBeforeUnload);
+  }, [modalOpen, draftDirty]);
 
   useEffect(() => {
     const valid = new Set(templates.map((t) => t.id));
@@ -300,22 +361,73 @@ export default function TemplatesView({ members, editorMemberId }: TemplatesView
   }, [someFilteredSelected, allFilteredSelected]);
 
   const openCreate = () => {
-    setEditingId(null);
-    setDraft(emptyDraft(categories, members));
     setNewCategoryName('');
+    let stored: { editingId: number | null; draft: Draft; savedAt: number } | null = null;
+    try {
+      const raw = sessionStorage.getItem(CHORES_TEMPLATE_DRAFT_STORAGE_KEY);
+      if (raw) {
+        const o = JSON.parse(raw) as { editingId: number | null; draft: Draft; savedAt: number };
+        if (
+          o &&
+          typeof o.savedAt === 'number' &&
+          Date.now() - o.savedAt < CHORES_TEMPLATE_DRAFT_MAX_AGE_MS &&
+          o.editingId == null &&
+          o.draft
+        ) {
+          stored = o;
+        }
+      }
+    } catch {
+      /* ignore */
+    }
+    if (stored) {
+      if (!window.confirm('Restore an unsaved new template draft from this browser?')) {
+        try {
+          sessionStorage.removeItem(CHORES_TEMPLATE_DRAFT_STORAGE_KEY);
+        } catch {
+          /* noop */
+        }
+      } else {
+        setEditingId(null);
+        setDraft(stored.draft);
+        setDraftBaseline(emptyDraft(categories, members));
+        setModalOpen(true);
+        return;
+      }
+    }
+    setEditingId(null);
+    const base = emptyDraft(categories, members);
+    setDraft(base);
+    setDraftBaseline({ ...base, assigneeIds: [...base.assigneeIds] });
     setModalOpen(true);
   };
 
   const openEdit = (t: ChoreTemplate) => {
-    setEditingId(t.id);
-    setDraft(templateToDraft(t));
     setNewCategoryName('');
+    setEditingId(t.id);
+    const d = templateToDraft(t);
+    setDraft(d);
+    setDraftBaseline({ ...d, assigneeIds: [...d.assigneeIds] });
     setModalOpen(true);
   };
 
-  const closeModal = () => {
+  const closeModal = (options?: { saved?: boolean }) => {
+    if (
+      !options?.saved &&
+      modalOpen &&
+      draftBaseline != null &&
+      draftFingerprint(draft) !== draftFingerprint(draftBaseline)
+    ) {
+      if (!window.confirm('Discard changes to this template?')) return;
+    }
+    try {
+      sessionStorage.removeItem(CHORES_TEMPLATE_DRAFT_STORAGE_KEY);
+    } catch {
+      /* noop */
+    }
     setModalOpen(false);
     setEditingId(null);
+    setDraftBaseline(null);
   };
 
   const addCategory = async () => {
@@ -335,6 +447,92 @@ export default function TemplatesView({ members, editorMemberId }: TemplatesView
   const defaultAssigneeIdsForNewTemplate = (): number[] => {
     const firstMembers = members.filter((m) => !m.canEditChores).map((m) => m.id);
     return firstMembers.length > 0 ? [firstMembers[0]] : members[0]?.id != null ? [members[0].id] : [];
+  };
+
+  const handleDownloadChoresBackup = () => {
+    setError(null);
+    try {
+      const data = buildChoresBackupFile(categories, templates);
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `chores-backup-${new Date().toISOString().replace(/[:]/g, '-').slice(0, 19)}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not build backup');
+    }
+  };
+
+  const runRestoreFromBackupFile = async (file: File | undefined) => {
+    if (!file || !canEdit || editorMemberId == null) return;
+    setBackupBusy(true);
+    setError(null);
+    try {
+      const text = await file.text();
+      const parsed = parseChoresBackupJson(text);
+      if (
+        !window.confirm(
+          `Restore backup from ${parsed.exportedAt}?\n\nThis adds any missing categories and every template from the file. If you already recreated items, you may get duplicates.`
+        )
+      ) {
+        return;
+      }
+      let cats = await api.getChoreCategories();
+      for (const row of parsed.categories) {
+        const key = row.name.trim().toLowerCase();
+        if (!cats.some((c) => c.name.trim().toLowerCase() === key)) {
+          await api.createChoreCategory({ name: row.name.trim(), sortOrder: row.sortOrder }, editorMemberId);
+          cats = await api.getChoreCategories();
+        }
+      }
+      const categoryIdByLower = new Map(cats.map((c) => [c.name.trim().toLowerCase(), c.id]));
+      let skipped = 0;
+      for (const row of parsed.templates) {
+        const cid = categoryIdByLower.get(row.categoryName.trim().toLowerCase());
+        if (cid == null) {
+          skipped += 1;
+          continue;
+        }
+        const anyone = row.anyoneMayComplete === true;
+        let assigneeIds = assigneeIdsFromNames(members, row.assigneeNames);
+        if (!anyone && assigneeIds.length === 0) {
+          assigneeIds = defaultAssigneeIdsForNewTemplate();
+        }
+        if (!anyone && assigneeIds.length === 0) {
+          skipped += 1;
+          continue;
+        }
+        const payload: ChoreTemplateSavePayload = {
+          name: row.name,
+          description: row.description,
+          categoryId: cid,
+          houseArea: row.houseArea ?? 'NONE',
+          assigneeIds: anyone ? [] : assigneeIds,
+          anyoneMayComplete: anyone,
+          frequencyType: row.frequencyType,
+          dayOfWeek: row.dayOfWeek,
+          weekOfMonth: row.weekOfMonth,
+          dayOfMonth: row.dayOfMonth,
+          semiannualMonths: row.semiannualMonths,
+          conditionalDayOfWeek: row.conditionalDayOfWeek,
+          conditionalAfterTime: row.conditionalAfterTime,
+          timeBlock: row.timeBlock,
+          pointsBase: Math.max(1, row.pointsBase || 1),
+          active: row.active,
+        };
+        await api.createTemplate(payload, editorMemberId);
+      }
+      loadAll();
+      if (skipped > 0) {
+        setError(`Restore finished but skipped ${skipped} row(s) (missing category or assignees).`);
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Restore failed');
+    } finally {
+      setBackupBusy(false);
+    }
   };
 
   const onImportFileSelected = async (file: File | undefined) => {
@@ -499,7 +697,7 @@ export default function TemplatesView({ members, editorMemberId }: TemplatesView
       } else {
         await api.updateTemplate(editingId, payload, editorMemberId);
       }
-      closeModal();
+      closeModal({ saved: true });
       loadAll();
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Save failed');
@@ -769,6 +967,22 @@ export default function TemplatesView({ members, editorMemberId }: TemplatesView
             >
               {importParsing ? 'Reading file…' : 'Import from PDF, image, or .txt'}
             </button>
+            <button
+              type="button"
+              disabled={backupBusy}
+              onClick={handleDownloadChoresBackup}
+              className="w-full rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm font-medium text-gray-800 shadow-sm hover:bg-gray-50 disabled:opacity-50 sm:w-auto sm:py-2"
+            >
+              Download backup (.json)
+            </button>
+            <button
+              type="button"
+              disabled={backupBusy}
+              onClick={() => backupRestoreFileRef.current?.click()}
+              className="w-full rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm font-medium text-gray-800 shadow-sm hover:bg-gray-50 disabled:opacity-50 sm:w-auto sm:py-2"
+            >
+              {backupBusy ? 'Restoring…' : 'Restore from backup'}
+            </button>
             <input
               ref={importFileRef}
               type="file"
@@ -779,6 +993,21 @@ export default function TemplatesView({ members, editorMemberId }: TemplatesView
                 e.target.value = '';
               }}
             />
+            <input
+              ref={backupRestoreFileRef}
+              type="file"
+              accept=".json,application/json"
+              className="hidden"
+              onChange={(e) => {
+                void runRestoreFromBackupFile(e.target.files?.[0]);
+                e.target.value = '';
+              }}
+            />
+            <p className="w-full text-xs text-gray-600">
+              Download a JSON backup after big changes and keep a copy outside the app. If the chores database is reset
+              (for example a host without a persistent disk), you can recreate categories and templates from that file
+              with Restore from backup.
+            </p>
         </div>
       )}
       </div>
@@ -1370,7 +1599,7 @@ export default function TemplatesView({ members, editorMemberId }: TemplatesView
             <div className="mt-8 flex flex-col-reverse gap-2 border-t border-gray-100 pt-4 sm:flex-row sm:flex-wrap sm:justify-end">
               <button
                 type="button"
-                onClick={closeModal}
+                onClick={() => closeModal()}
                 className="w-full rounded-lg border border-gray-300 px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 sm:w-auto sm:py-2"
               >
                 Cancel
