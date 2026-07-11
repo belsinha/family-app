@@ -187,13 +187,20 @@ If production logs show `Could not find the table 'public.challenges' in the sch
 ## Environment Variables
 
 ### Backend
-Create a `.env` file in the `backend/` directory (optional):
+Copy `backend/.env.example` to `backend/.env` and fill in your own values:
 ```
 PORT=3001
 NODE_ENV=development
 DATABASE_PATH=./data/family-app.db
 CHORES_DATABASE_URL=file:./data/chores.db
+SUPABASE_URL=https://your-project-ref.supabase.co
+SUPABASE_ANON_KEY=your_publishable_or_anon_key_here
+SUPABASE_SERVICE_ROLE_KEY=your_service_role_key_here
 ```
+`SUPABASE_URL` and `SUPABASE_ANON_KEY` (or `SUPABASE_PUBLISHABLE_KEY`) are **required** — the
+backend exits on startup if they're missing, in every environment including local dev. There is
+no hardcoded fallback project; see [Security](#security-rotate-the-supabase-key) and
+`backend/SUPABASE_SETUP.md`.
 
 **Render / PaaS:** The repo `render.yaml` attaches a **persistent disk** and sets `CHORES_DATABASE_URL` and `DATABASE_PATH` under that mount so **chore templates and the main SQLite DB survive deploys**. That requires a **paid** web instance (`plan: starter` or higher); Render does not offer persistent disks on the free tier. If you use `plan: free`, SQLite files under the app directory are **ephemeral** and will look “wiped” after each deploy. For local dev, keep `CHORES_DATABASE_URL=file:./data/chores.db` and `DATABASE_PATH=./data/family-app.db`. Do not use `file:/data/chores.db` — the app remaps that mistake to `backend/data/`, but fix wrong values in the dashboard when you see them.
 
@@ -227,6 +234,18 @@ Create a `.env` file in the `frontend/` directory (optional):
 VITE_API_URL=http://localhost:3001/api
 ```
 Omit `VITE_API_URL` for production builds that are served from the same host as the API (the app then uses `{origin}/api`). Keep it for local Vite on port 3000 or for a split static-site + API setup.
+
+## Security: rotate the Supabase key
+
+An earlier version of this repo hardcoded a shared development Supabase project URL and
+publishable (anon) key directly in `backend/src/config.ts` as a fallback, so the backend would
+silently connect to that shared project if `SUPABASE_URL`/`SUPABASE_ANON_KEY` weren't set. That
+fallback has been removed — the backend now requires its own env vars everywhere, including local
+dev (see `backend/.env.example`) — but the old key is still present in this repo's git history.
+
+**Before launching this app to production (or sharing the repo further), rotate/regenerate that
+key in the Supabase dashboard** (Settings > API), and confirm no code path still assumes a shared
+default project.
 
 ## Technology Stack
 

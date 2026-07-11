@@ -4,12 +4,18 @@ import { loadBitcoinWalletConfig } from './bitcoinWalletConfig.js';
 dotenv.config();
 
 const isProduction = process.env.NODE_ENV === 'production';
-const supabaseUrl = process.env.SUPABASE_URL || (!isProduction ? 'https://qusvfeposzfmhggrvots.supabase.co' : undefined);
-const supabaseAnonKey = process.env.SUPABASE_ANON_KEY || process.env.SUPABASE_PUBLISHABLE_KEY || (!isProduction ? 'sb_publishable_PonqAiHcIragHdun58jMxg_bZXwWo5w' : undefined);
+const supabaseUrl = process.env.SUPABASE_URL;
+const supabaseAnonKey = process.env.SUPABASE_ANON_KEY || process.env.SUPABASE_PUBLISHABLE_KEY;
 
-if (isProduction && (!supabaseUrl || !supabaseAnonKey)) {
-  console.error('In production, SUPABASE_URL and SUPABASE_ANON_KEY (or SUPABASE_PUBLISHABLE_KEY) must be set.');
-  console.error('Set them in Render Dashboard → your service → Environment.');
+// No hardcoded fallback: every environment (including local dev) must supply its own Supabase
+// project credentials. See backend/.env.example / backend/SUPABASE_SETUP.md.
+if (!supabaseUrl || !supabaseAnonKey) {
+  console.error('SUPABASE_URL and SUPABASE_ANON_KEY (or SUPABASE_PUBLISHABLE_KEY) must be set.');
+  if (isProduction) {
+    console.error('Set them in Render Dashboard → your service → Environment.');
+  } else {
+    console.error('Copy backend/.env.example to backend/.env and fill in your own Supabase project credentials.');
+  }
   process.exit(1);
 }
 

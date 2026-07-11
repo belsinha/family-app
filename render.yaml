@@ -23,6 +23,9 @@ services:
         value: /opt/render/project/src/persist/family-app.db
       - key: CHORES_DATABASE_URL
         value: file:/opt/render/project/src/persist/chores.db
+      # sync: false — set these manually in the Render Dashboard, never inline here.
+      # Use your own Supabase project's rotated key; do not reuse any previously-shared
+      # dev key (see README.md "Security: rotate the Supabase key" / backend/SUPABASE_SETUP.md).
       - key: SUPABASE_URL
         sync: false
       - key: SUPABASE_ANON_KEY
