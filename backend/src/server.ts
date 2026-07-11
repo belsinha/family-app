@@ -1,7 +1,7 @@
 import express from 'express';
-import cors from 'cors';
 import path from 'path';
 import { config } from './config.js';
+import { applySecurityMiddleware } from './securityMiddleware.js';
 import { initDatabase } from './db/init-supabase.js';
 import { logger } from './middleware/logger.js';
 import { errorHandler } from './middleware/errorHandler.js';
@@ -19,11 +19,10 @@ const frontendIndex = frontendResolved?.index ?? '';
 const app = express();
 
 // Middleware
-app.use(cors({
-  origin: true,
-  credentials: true,
-}));
-app.use(express.json());
+applySecurityMiddleware(app, {
+  allowedOrigins: config.cors.allowedOrigins,
+  allowLocalhost: config.cors.allowLocalhost,
+});
 app.use(logger);
 
 // Health check (before database init for quick health checks)

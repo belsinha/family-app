@@ -1,5 +1,6 @@
 import dotenv from 'dotenv';
 import { loadBitcoinWalletConfig } from './bitcoinWalletConfig.js';
+import { parseAllowedOrigins } from './corsOrigins.js';
 
 dotenv.config();
 
@@ -32,6 +33,13 @@ function normalizeEsploraBaseUrl(url: string): string {
   }
   return u;
 }
+
+const corsAllowedOrigins = Array.from(
+  new Set([
+    ...parseAllowedOrigins(process.env.ALLOWED_ORIGINS),
+    ...(trimTrailingSlash(process.env.PUBLIC_APP_ORIGIN) ? [trimTrailingSlash(process.env.PUBLIC_APP_ORIGIN)!] : []),
+  ])
+);
 
 const keepAliveBaseUrl =
   trimTrailingSlash(process.env.KEEP_ALIVE_URL) ?? trimTrailingSlash(process.env.RENDER_EXTERNAL_URL) ?? null;
@@ -76,6 +84,13 @@ export const config = {
     enabled: process.env.KEEP_ALIVE_ENABLED !== 'false' && isProduction && keepAliveBaseUrl != null,
     baseUrl: keepAliveBaseUrl,
     intervalMs: keepAliveIntervalMs,
+  },
+  cors: {
+    // Exact-match allowlist from ALLOWED_ORIGINS (comma-separated) plus PUBLIC_APP_ORIGIN.
+    allowedOrigins: corsAllowedOrigins,
+    // Any http(s)://localhost|127.0.0.1|[::1]:<port> is allowed outside production so local
+    // dev (Vite on a random port, etc.) doesn't need every port added to the allowlist.
+    allowLocalhost: !isProduction,
   },
 };
 
