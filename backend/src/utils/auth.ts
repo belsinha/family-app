@@ -55,7 +55,7 @@ export function normalizeLoginName(name: string): string {
   return printable.trim().replace(/\s+/g, ' ').slice(0, MAX_LOGIN_NAME_LENGTH);
 }
 
-const COMMON_WEAK_PASSWORDS = new Set([
+export const COMMON_WEAK_PASSWORDS = new Set([
   'password',
   'password1',
   'password123',
@@ -65,6 +65,7 @@ const COMMON_WEAK_PASSWORDS = new Set([
   'changeme',
   '12345678',
   '123456789',
+  'admin',
   'admin123',
   'welcome1',
 ]);

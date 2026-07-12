@@ -2,6 +2,8 @@ import { initSupabaseConnection, getSupabaseClient } from './supabase.js';
 import { seedDatabase } from './seed-supabase.js';
 import { migrateBitcoinTables, cleanupOrphanedConversions } from './migrate-bitcoin-tables.js';
 import { migrateProjectsTable, migrateWorkLogsForProjects } from './migrate-project-tables.js';
+import { assertProductionCredentialsAreSafe } from './productionCredentialCheck.js';
+import { config } from '../config.js';
 
 /**
  * Migrate active_timers table (persistent work timer) - creates it if it doesn't exist.
@@ -336,6 +338,12 @@ export async function initDatabase() {
       console.log('Seed data created');
     } else {
       console.log('Database already contains data, skipping seed');
+    }
+
+    // Boot gate: in production, refuse to start (or warn, with an explicit override) if any
+    // account still has a demo/default password, or if setup is otherwise incomplete.
+    if (config.isProduction) {
+      await assertProductionCredentialsAreSafe();
     }
   } catch (error) {
     const err = error instanceof Error ? error : new Error(String(error));

@@ -284,12 +284,27 @@ default project.
   round-trip to every authenticated request, which `authenticate` middleware doesn't do today —
   and Supabase schema changes in this repo are applied manually (see `SUPABASE_SETUP.md`), so it
   wasn't added speculatively here.
-- **Seeded parent passwords**: `backend/src/db/seed-supabase.ts` now generates a strong random
-  password per parent (or takes `SEED_ROMMEL_PASSWORD` / `SEED_CELIANE_PASSWORD` from env) and
-  prints it once to the server log on first seed, instead of the old shared literal `"password"`.
-  This only affects a **fresh, empty** database — if your production Supabase project has already
-  been seeded, Rommel and Celiane's accounts still have whatever password they were set up with.
-  **Change both parent passwords via "Change Password" before launch** if that's the case.
+- **Seeded passwords are never a shared literal in production.** `backend/src/db/seed-supabase.ts`
+  generates a strong random password per parent (or takes `SEED_ROMMEL_PASSWORD` /
+  `SEED_CELIANE_PASSWORD` from env) and prints it once to the server log on first seed, instead of
+  the old shared literal `"password"`. In production, child accounts (`Isabel`, `Nicholas`,
+  `Laura`) get the same treatment — a strong random password (or `SEED_<NAME>_PASSWORD` override)
+  printed once — instead of the outside-production default of "their own name lowercase". This
+  only affects a **fresh, empty** database — if your production Supabase project was already
+  seeded, existing accounts keep whatever password they were set up with.
+  **Change every seeded password via "Change Password" right after first login.**
+- **Production boot gate**: on every production startup, `backend/src/db/productionCredentialCheck.ts`
+  queries all accounts and refuses to start the server (`process.exit(1)`) if any account's
+  password still matches a known demo/default value (a common weak password, or a child's own
+  name), or if there is no parent/admin account at all. This is defense-in-depth for the case
+  above — a prod database seeded before this check existed, or one where defaults were never
+  rotated. To remediate an already-live deployment that trips the gate (you need the app running
+  to call `/api/auth/change-password`), set `ALLOW_DEFAULT_CREDENTIALS=true` to downgrade the gate
+  to a warning for one boot, log in and fix the affected passwords, then remove the override.
+- **`seed.ts` (legacy sql.js/SQLite seeder) is dev-only.** It isn't wired into the app's normal
+  boot path (`server.ts` uses the Supabase seeder), but it now hard-throws if
+  `NODE_ENV=production` so it can't accidentally seed a production-adjacent environment with its
+  shared default parent password.
 
 ## Technology Stack
 

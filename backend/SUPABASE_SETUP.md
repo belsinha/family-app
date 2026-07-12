@@ -38,15 +38,37 @@ The application is now configured to use Supabase (PostgreSQL) instead of SQLite
    - Check if tables exist
    - Seed initial data if the database is empty
 
-## Default Credentials
+## First-run credentials
 
-After seeding, you can log in with:
-- **Parents**: 
-  - Name: `Rommel` or `Celiane`
-  - Password: `password`
-- **Children**:
-  - Name: `Isabel`, `Nicholas`, or `Laura`
-  - Password: (their name in lowercase, e.g., `isabel`)
+Seeding never writes the literal password `"password"` — it never has for parent accounts, and
+as of this change it doesn't for child accounts in production either.
+
+- **Local/dev** (`NODE_ENV` not `production`): logging into a freshly seeded database uses
+  - Parents (`Rommel`, `Celiane`): a strong random password, printed **once** to the server log
+    the moment seeding runs. Copy it down immediately — it is not stored or shown again.
+  - Children (`Isabel`, `Nicholas`, `Laura`): their own name in lowercase (e.g. `isabel`). This is
+    an intentional low-friction default for local/home use, not a production credential.
+- **Production** (`NODE_ENV=production`): both parents *and* children get a strong random
+  password (or an explicit override — see below), printed once to the server log on first seed.
+  There is no name-based or literal `"password"` default in production at all.
+
+  To pin specific first-boot passwords instead of the random ones (e.g. for a scripted deploy),
+  set before the first boot against an empty database:
+  ```
+  SEED_ROMMEL_PASSWORD=...
+  SEED_CELIANE_PASSWORD=...
+  SEED_ISABEL_PASSWORD=...
+  SEED_NICHOLAS_PASSWORD=...
+  SEED_LAURA_PASSWORD=...
+  ```
+  These only take effect while seeding an empty database — they do nothing once accounts exist.
+
+  **Change every seeded password via "Change Password" right after first login.** In production,
+  the backend also refuses to start at all if it detects any account still on a known
+  demo/default password or if there's no parent account at all — see
+  `backend/src/db/productionCredentialCheck.ts`. If a production database was seeded before this
+  check existed and you need one boot to remediate it, set `ALLOW_DEFAULT_CREDENTIALS=true`
+  temporarily, log in, change the affected passwords, then remove the override.
 
 ## Troubleshooting
 

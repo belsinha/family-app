@@ -1,7 +1,21 @@
 import { getDatabase, saveDatabase } from './connection.js';
 import { hashPassword } from '../utils/auth.js';
 
+/**
+ * Legacy SQLite dev seeder — superseded by seed-supabase.ts, which is what the app actually
+ * boots against (see server.ts / db/init-supabase.ts). Kept around only for local
+ * experimentation with the old sql.js backend, so it's hard-gated out of production rather
+ * than deleted outright.
+ */
 export async function seedDatabase() {
+  if (process.env.NODE_ENV === 'production') {
+    throw new Error(
+      'seed.ts (legacy SQLite dev seeder) must not run in production. It seeds a shared ' +
+        'default parent password and is not wired into the app\'s normal boot path — see ' +
+        'seed-supabase.ts for the production seeder.'
+    );
+  }
+
   const db = getDatabase();
 
   const houses = [
