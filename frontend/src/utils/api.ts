@@ -3,6 +3,10 @@ import { getApiBaseUrl } from './getApiBaseUrl';
 
 const API_BASE_URL = getApiBaseUrl();
 
+/** Dispatched when the API rejects a request as unauthorized (missing/expired/invalid token),
+ *  so AuthContext can clear stale session state and route back to the login screen. */
+export const UNAUTHORIZED_EVENT = 'family-app:unauthorized';
+
 async function request<T>(
   endpoint: string,
   options?: RequestInit
@@ -35,6 +39,11 @@ async function request<T>(
         } catch {
           // Use default error message
         }
+      }
+      // Only treat this as a dead session if we sent a token — a 401 on the login
+      // endpoint itself just means bad credentials, not an expired session.
+      if (response.status === 401 && token) {
+        window.dispatchEvent(new CustomEvent(UNAUTHORIZED_EVENT));
       }
       throw new Error(errorMessage);
     }

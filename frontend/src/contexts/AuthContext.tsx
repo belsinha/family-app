@@ -1,6 +1,7 @@
-import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
 import type { User, LoginRequest, LoginResponse } from '../../../shared/src/types';
 import { getApiBaseUrl } from '../utils/getApiBaseUrl';
+import { UNAUTHORIZED_EVENT } from '../utils/api';
 
 export type LoginStatus = 'idle' | 'waking-up' | 'authenticating' | 'success' | 'error';
 
@@ -181,12 +182,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const logout = () => {
+  const logout = useCallback(() => {
     setToken(null);
     setUser(null);
     localStorage.removeItem('authToken');
     localStorage.removeItem('authUser');
-  };
+  }, []);
+
+  // A 401 from any API call (typically an expired token, since our tokens are now
+  // shorter-lived for parent/family accounts) clears the stale session so ProtectedRoute
+  // sends the user back to /login instead of leaving them stuck on a broken page.
+  useEffect(() => {
+    window.addEventListener(UNAUTHORIZED_EVENT, logout);
+    return () => window.removeEventListener(UNAUTHORIZED_EVENT, logout);
+  }, [logout]);
 
   return (
     <AuthContext.Provider

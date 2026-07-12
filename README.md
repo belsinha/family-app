@@ -247,6 +247,43 @@ dev (see `backend/.env.example`) — but the old key is still present in this re
 key in the Supabase dashboard** (Settings > API), and confirm no code path still assumes a shared
 default project.
 
+## Security: authentication posture
+
+- **`JWT_SECRET` is required in production.** The backend exits on startup if `NODE_ENV=production`
+  and `JWT_SECRET` isn't set — see `backend/.env.example` for how to generate one. In dev it falls
+  back to an insecure placeholder so `npm run dev` still works without extra setup.
+- **Token lifetime is role-aware.** Parent/family (admin-equivalent) tokens expire in 12h in
+  production (7d in dev) via `JWT_EXPIRES_IN`; child tokens stay at 7d (`JWT_CHILD_EXPIRES_IN`) in
+  every environment on purpose — kids' accounts are low-privilege, so we optimize for not making
+  them re-login instead of shortening their session.
+- **Password policy is role-aware**, enforced in `/api/auth/change-password`: parent/family
+  accounts need 10+ characters with 3 of {lowercase, uppercase, digit, symbol}, can't reuse a
+  handful of common weak passwords, and can't contain the account's own login name. Child accounts
+  keep the original 4-character-minimum policy so a kid can still use their own name — that's an
+  intentional UX tradeoff for low-stakes accounts, not an oversight.
+- **bcrypt cost is 12** by default (`BCRYPT_COST` env, 10-15), up from the previous 10.
+- **Login names are normalized** (trimmed, internal whitespace collapsed, control characters
+  stripped, length-capped) before lookup, but matching stays case-sensitive — we deliberately did
+  *not* lowercase-fold names, since that would require also renaming existing stored users to stay
+  consistent, and getting that wrong locks people out.
+- **Logout today is client-side only**: it deletes the JWT from `localStorage` on that device.
+  There is no server-side revocation list — a JWT stays valid until it expires, even after
+  logout, a password change, or a role change elsewhere. The shortened production expiry above is
+  the practical mitigation for a leaked/stolen parent token. If you need to kill a specific
+  session immediately (lost device, suspected compromise), the only lever today is rotating
+  `JWT_SECRET`, which invalidates **every** user's token, forcing a full re-login. A proper
+  per-user revocation mechanism (e.g. a `token_version` column on `users`, embedded in the JWT and
+  checked per request) is a reasonable follow-up but is a real architectural change — it adds a DB
+  round-trip to every authenticated request, which `authenticate` middleware doesn't do today —
+  and Supabase schema changes in this repo are applied manually (see `SUPABASE_SETUP.md`), so it
+  wasn't added speculatively here.
+- **Seeded parent passwords**: `backend/src/db/seed-supabase.ts` now generates a strong random
+  password per parent (or takes `SEED_ROMMEL_PASSWORD` / `SEED_CELIANE_PASSWORD` from env) and
+  prints it once to the server log on first seed, instead of the old shared literal `"password"`.
+  This only affects a **fresh, empty** database — if your production Supabase project has already
+  been seeded, Rommel and Celiane's accounts still have whatever password they were set up with.
+  **Change both parent passwords via "Change Password" before launch** if that's the case.
+
 ## Technology Stack
 
 - **Frontend**: React 18, TypeScript, Vite, Tailwind CSS, React Router, Font Awesome

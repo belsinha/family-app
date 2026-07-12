@@ -1,5 +1,5 @@
 import { getSupabaseClient } from './supabase.js';
-import { hashPassword } from '../utils/auth.js';
+import { hashPassword, generateStrongPassword } from '../utils/auth.js';
 
 export async function seedDatabase() {
   const supabase = getSupabaseClient();
@@ -32,39 +32,51 @@ export async function seedDatabase() {
     }
   }
 
-  // Insert parents with passwords (default password: "password")
+  // Insert parents with strong, unique, randomly-generated passwords. Parent/family accounts
+  // are admin-equivalent (can add/remove points, manage bitcoin payouts), so they don't get a
+  // shared guessable default the way child accounts intentionally do — see below. Each password
+  // can be pinned via env (e.g. for a scripted first deploy); otherwise one is generated and
+  // printed once so it can be captured and then changed via /auth/change-password.
   const parentHouseId = houseIds['Campo Bom'] || houseIds[houses[0]];
-  const parentPassword = await hashPassword('password');
-  
+  const rommelPlaintextPassword = process.env.SEED_ROMMEL_PASSWORD || generateStrongPassword();
+  const celianePlaintextPassword = process.env.SEED_CELIANE_PASSWORD || generateStrongPassword();
+
   const { data: rommel, error: rommelError } = await supabase
     .from('users')
     .insert({
       name: 'Rommel',
       role: 'parent',
       house_id: parentHouseId,
-      password_hash: parentPassword,
+      password_hash: await hashPassword(rommelPlaintextPassword),
     })
     .select('id')
     .single();
-  
+
   if (rommelError) {
     throw new Error(`Failed to insert user Rommel: ${rommelError.message}`);
   }
-  
+
   const { data: celiane, error: celianeError } = await supabase
     .from('users')
     .insert({
       name: 'Celiane',
       role: 'parent',
       house_id: parentHouseId,
-      password_hash: parentPassword,
+      password_hash: await hashPassword(celianePlaintextPassword),
     })
     .select('id')
     .single();
-  
+
   if (celianeError) {
     throw new Error(`Failed to insert user Celiane: ${celianeError.message}`);
   }
+
+  console.log('==================================================================');
+  console.log('Initial parent passwords (shown once — save them now):');
+  console.log(`  Rommel:  ${rommelPlaintextPassword}`);
+  console.log(`  Celiane: ${celianePlaintextPassword}`);
+  console.log('Change these via "Change Password" after first login.');
+  console.log('==================================================================');
 
   // Insert children with passwords (default password: their name lowercase)
   const children = [

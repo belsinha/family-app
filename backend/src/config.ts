@@ -20,6 +20,26 @@ if (!supabaseUrl || !supabaseAnonKey) {
   process.exit(1);
 }
 
+const DEV_ONLY_JWT_SECRET = 'dev-only-insecure-secret-change-me';
+const jwtSecretEnv = process.env.JWT_SECRET;
+
+// JWT_SECRET must be explicitly set in production — a guessable/shared secret lets an
+// attacker forge auth tokens for any user (including parent/admin accounts).
+if (!jwtSecretEnv && isProduction) {
+  console.error('JWT_SECRET must be set in production. Set it in Render Dashboard → your service → Environment.');
+  console.error('Generate one with: node -e "console.log(require(\'crypto\').randomBytes(48).toString(\'hex\'))"');
+  process.exit(1);
+}
+if (!jwtSecretEnv) {
+  console.warn('JWT_SECRET not set — using an insecure dev-only default. Set JWT_SECRET in backend/.env for real use.');
+}
+
+function parseBcryptCost(): number {
+  const raw = parseInt(process.env.BCRYPT_COST || '', 10);
+  if (Number.isFinite(raw) && raw >= 10 && raw <= 15) return raw;
+  return 12;
+}
+
 function trimTrailingSlash(u: string | undefined): string | undefined {
   if (!u) return undefined;
   return u.replace(/\/$/, '');
@@ -58,11 +78,24 @@ try {
 export const config = {
   port: parseInt(process.env.PORT || '3001', 10),
   nodeEnv: process.env.NODE_ENV || 'development',
+  isProduction,
   databasePath: process.env.DATABASE_PATH || './data/family-app.db',
   choresDatabaseUrl: process.env.CHORES_DATABASE_URL || 'file:./data/chores.db',
   chores: {
     // The Prisma/SQLite chores database represents exactly one Supabase house.
     houseId: Number.parseInt(process.env.CHORES_HOUSE_ID || '1', 10),
+  },
+  jwt: {
+    secret: jwtSecretEnv || DEV_ONLY_JWT_SECRET,
+    // Parent/family (admin-equivalent) accounts: short-lived in production so a leaked token
+    // has a small window of use. Longer in dev for convenience.
+    expiresIn: process.env.JWT_EXPIRES_IN || (isProduction ? '12h' : '7d'),
+    // Child accounts: kept long-lived in every environment on purpose — kids re-authing every
+    // half day is a real UX cost for a low-privilege account, so we don't shorten this in prod.
+    childExpiresIn: process.env.JWT_CHILD_EXPIRES_IN || '7d',
+  },
+  security: {
+    bcryptCost: parseBcryptCost(),
   },
   supabase: {
     url: supabaseUrl!,
