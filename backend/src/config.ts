@@ -1,6 +1,11 @@
 import dotenv from 'dotenv';
 import { loadBitcoinWalletConfig } from './bitcoinWalletConfig.js';
 import { parseAllowedOrigins } from './corsOrigins.js';
+import {
+  DEV_ONLY_JWT_SECRET,
+  collectProductionStartupProblems,
+  formatProductionStartupProblems,
+} from './startupSecurityGate.js';
 
 dotenv.config();
 
@@ -20,18 +25,22 @@ if (!supabaseUrl || !supabaseAnonKey) {
   process.exit(1);
 }
 
-const DEV_ONLY_JWT_SECRET = 'dev-only-insecure-secret-change-me';
 const jwtSecretEnv = process.env.JWT_SECRET;
 
-// JWT_SECRET must be explicitly set in production — a guessable/shared secret lets an
-// attacker forge auth tokens for any user (including parent/admin accounts).
-if (!jwtSecretEnv && isProduction) {
-  console.error('JWT_SECRET must be set in production. Set it in Render Dashboard → your service → Environment.');
-  console.error('Generate one with: node -e "console.log(require(\'crypto\').randomBytes(48).toString(\'hex\'))"');
-  process.exit(1);
-}
-if (!jwtSecretEnv) {
+if (!jwtSecretEnv && !isProduction) {
   console.warn('JWT_SECRET not set — using an insecure dev-only default. Set JWT_SECRET in backend/.env for real use.');
+}
+
+// Production startup security gate: refuses to boot on a weak/placeholder JWT_SECRET, a
+// placeholder-looking Supabase URL/key, a missing CORS allowlist, or a database path that would
+// silently lose data on redeploy. See startupSecurityGate.ts for the full rule set, and
+// db/productionCredentialCheck.ts for the companion check against live account passwords.
+if (isProduction) {
+  const problems = collectProductionStartupProblems(process.env);
+  if (problems.length > 0) {
+    console.error(formatProductionStartupProblems(problems));
+    process.exit(1);
+  }
 }
 
 function parseBcryptCost(): number {

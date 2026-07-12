@@ -1,5 +1,8 @@
 import express from 'express';
 import path from 'path';
+// Importing config runs the production startup security gate as a side effect (see
+// startupSecurityGate.ts) — it must stay the first local import so an unsafe production config
+// exits before any other module (routes, DB init, etc.) does real work.
 import { config } from './config.js';
 import { applySecurityMiddleware } from './securityMiddleware.js';
 import { initDatabase } from './db/init-supabase.js';

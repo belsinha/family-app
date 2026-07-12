@@ -202,6 +202,11 @@ backend exits on startup if they're missing, in every environment including loca
 no hardcoded fallback project; see [Security](#security-rotate-the-supabase-key) and
 `backend/SUPABASE_SETUP.md`.
 
+**In production**, `JWT_SECRET` and `ALLOWED_ORIGINS` (or `PUBLIC_APP_ORIGIN`) are also required,
+and `CHORES_DATABASE_URL` must be an absolute path — the backend refuses to boot otherwise. See
+[Security: authentication posture](#security-authentication-posture) for the full production
+startup gate.
+
 **Render / PaaS:** The repo `render.yaml` attaches a **persistent disk** and sets `CHORES_DATABASE_URL` and `DATABASE_PATH` under that mount so **chore templates and the main SQLite DB survive deploys**. That requires a **paid** web instance (`plan: starter` or higher); Render does not offer persistent disks on the free tier. If you use `plan: free`, SQLite files under the app directory are **ephemeral** and will look “wiped” after each deploy. For local dev, keep `CHORES_DATABASE_URL=file:./data/chores.db` and `DATABASE_PATH=./data/family-app.db`. Do not use `file:/data/chores.db` — the app remaps that mistake to `backend/data/`, but fix wrong values in the dashboard when you see them.
 
 **Render build command:** Use the **repository root** as the service root directory. The build must produce `frontend/dist` before the backend build runs `copy-spa-to-dist`. Either use the same **inline** command as `render.yaml` (`npm install && cd frontend && … && cd ../backend && npm run build`) or, after pulling a commit that includes it, `npm install && npm run build:render`. If the dashboard uses `npm run build:render` but GitHub `main` does not define that script yet, the build fails with “Missing script”. Do not use `npm install && cd backend && npm run build` only — that skips the frontend and fails at `copy-spa-to-dist`.
@@ -259,6 +264,27 @@ default project.
 - **`JWT_SECRET` is required in production.** The backend exits on startup if `NODE_ENV=production`
   and `JWT_SECRET` isn't set — see `backend/.env.example` for how to generate one. In dev it falls
   back to an insecure placeholder so `npm run dev` still works without extra setup.
+- **Production startup security gate** (`backend/src/startupSecurityGate.ts`, wired into
+  `config.ts` and run before the app touches a socket or database): in production, the backend
+  refuses to boot (`process.exit(1)`, with every problem listed at once) unless:
+  - `JWT_SECRET` is at least 32 characters, isn't the dev-only placeholder, and doesn't look like a
+    placeholder/low-entropy value (e.g. `changeme...`, `aaaa...`, `abcabcabc...`).
+  - `SUPABASE_URL` is an `https://` URL and `SUPABASE_ANON_KEY`/`SUPABASE_PUBLISHABLE_KEY` is set —
+    neither may look like a value copied verbatim from `backend/.env.example`
+    (`your-project-ref...`, `your_publishable_or_anon_key_here`).
+  - `ALLOWED_ORIGINS` (or `PUBLIC_APP_ORIGIN`) is set to at least one origin — otherwise no browser
+    origin would be allowed at all, since the dev-only localhost allowlist doesn't apply in
+    production.
+  - `CHORES_DATABASE_URL` is set to an **absolute** `file:` path — a relative path resolves inside
+    the app directory on Render (and most PaaS) and is silently wiped on every deploy instead of
+    living on the persistent disk (see `render.yaml`). `DATABASE_PATH` (the legacy, unused sql.js
+    path — see `render.yaml`) is deliberately **not** gated, since blocking boot on dead config
+    would be a footgun for whoever removes it later.
+  This is a config-shape gate; it complements (and runs before) the credentials gate below, which
+  checks live account passwords after the database connects. Both are exercised end-to-end by
+  `backend/src/config.smoke.test.ts`, which spawns the real boot path with a battery of broken
+  production configs and asserts the process exits nonzero for each; `startupSecurityGate.test.ts`
+  unit-tests the underlying rules. Run both with `npm run test` (from `backend/`).
 - **Token lifetime is role-aware.** Parent/family (admin-equivalent) tokens expire in 12h in
   production (7d in dev) via `JWT_EXPIRES_IN`; child tokens stay at 7d (`JWT_CHILD_EXPIRES_IN`) in
   every environment on purpose — kids' accounts are low-privilege, so we optimize for not making
