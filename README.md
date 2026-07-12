@@ -235,6 +235,13 @@ VITE_API_URL=http://localhost:3001/api
 ```
 Omit `VITE_API_URL` for production builds that are served from the same host as the API (the app then uses `{origin}/api`). Keep it for local Vite on port 3000 or for a split static-site + API setup.
 
+## Security & operations
+
+Backups, key rotation (Supabase, the optional Bitcoin wallet, `JWT_SECRET`), log review, session
+revocation, data retention/deletion, and privacy handling for AI-parsed uploads are covered in
+[`docs/security-runbook.md`](docs/security-runbook.md). For how to report a security issue, see
+[`SECURITY.md`](SECURITY.md).
+
 ## Security: rotate the Supabase key
 
 An earlier version of this repo hardcoded a shared development Supabase project URL and
