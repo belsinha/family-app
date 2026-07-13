@@ -9,6 +9,7 @@ import {
   MAX_PASSWORD_LENGTH,
 } from '../utils/auth.js';
 import { authenticate, type AuthRequest } from '../middleware/auth.js';
+import { loginIpRateLimiter, loginNameRateLimiter } from '../middleware/rateLimit.js';
 import type { User } from '../types.js';
 
 const router = Router();
@@ -23,7 +24,7 @@ interface ChangePasswordRequest {
   newPassword: string;
 }
 
-router.post('/login', async (req, res, next) => {
+router.post('/login', loginIpRateLimiter, loginNameRateLimiter, async (req, res, next) => {
   try {
     const { name, password }: LoginRequest = req.body;
 

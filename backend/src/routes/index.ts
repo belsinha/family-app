@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { writeRateLimiter } from '../middleware/rateLimit.js';
 import usersRoutes from './users.js';
 import childrenRoutes from './children.js';
 import pointsRoutes from './points.js';
@@ -16,6 +17,10 @@ import onchainRoutes from './onchain.js';
 import allowanceRoutes from './allowance.js';
 
 const router = Router();
+
+// Applies to every non-GET/HEAD/OPTIONS request under /api; route-specific limiters (login,
+// upload) stack on top of this for the routes that need tighter caps.
+router.use(writeRateLimiter);
 
 router.use('/auth', authRoutes);
 router.use('/users', usersRoutes);

@@ -21,6 +21,12 @@ const frontendIndex = frontendResolved?.index ?? '';
 
 const app = express();
 
+// Render (and most PaaS hosts) sit in front of this app as a single reverse-proxy hop; trust it
+// so req.ip reflects the real client (not the proxy) — this also keeps rate limiting keyed by
+// the actual caller instead of one shared proxy IP. `1` = trust exactly one hop, never `true`
+// (which would let a client spoof X-Forwarded-For and bypass IP-based rate limiting entirely).
+app.set('trust proxy', 1);
+
 // Middleware
 applySecurityMiddleware(app, {
   allowedOrigins: config.cors.allowedOrigins,

@@ -36,24 +36,9 @@ export async function comparePassword(password: string, hash: string): Promise<b
   return bcrypt.compare(password, hash);
 }
 
-export const MAX_LOGIN_NAME_LENGTH = 100;
+export { MAX_LOGIN_NAME_LENGTH, normalizeLoginName } from './loginName.js';
+
 export const MAX_PASSWORD_LENGTH = 128;
-
-function isPrintableChar(ch: string): boolean {
-  const code = ch.codePointAt(0) ?? 0;
-  if (code <= 31 || code === 127) return false; // ASCII control chars + DEL
-  return true;
-}
-
-/**
- * Trims/collapses whitespace and strips control characters from a login name before it's
- * used in a lookup. Deliberately does NOT case-fold: names are stored/matched case-sensitively
- * today, and lowercasing only the input (not stored data) would lock out existing accounts.
- */
-export function normalizeLoginName(name: string): string {
-  const printable = Array.from(name).filter(isPrintableChar).join('');
-  return printable.trim().replace(/\s+/g, ' ').slice(0, MAX_LOGIN_NAME_LENGTH);
-}
 
 export const COMMON_WEAK_PASSWORDS = new Set([
   'password',
