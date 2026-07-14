@@ -155,6 +155,22 @@ BEGIN
   END IF;
 END $$;
 
+-- Active work timers (server-persisted running timer; one per child).
+-- Elapsed time is always computed from started_at, never from client ticks.
+-- Stopping deletes the row and writes a work_logs entry with the wall-clock duration.
+CREATE TABLE IF NOT EXISTS active_timers (
+  id BIGSERIAL PRIMARY KEY,
+  house_id BIGINT NOT NULL,
+  child_id BIGINT NOT NULL,
+  project_id BIGINT NOT NULL,
+  started_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  CONSTRAINT active_timers_child_id_key UNIQUE (child_id),
+  CONSTRAINT active_timers_house_id_fkey FOREIGN KEY (house_id) REFERENCES houses(id) ON DELETE CASCADE,
+  CONSTRAINT active_timers_child_house_fkey FOREIGN KEY (child_id, house_id) REFERENCES children(id, house_id) ON DELETE CASCADE,
+  CONSTRAINT active_timers_project_house_fkey FOREIGN KEY (project_id, house_id) REFERENCES projects(id, house_id) ON DELETE CASCADE
+);
+
 -- Create indexes for better performance
 CREATE INDEX IF NOT EXISTS idx_users_house_id ON users(house_id);
 CREATE INDEX IF NOT EXISTS idx_users_role ON users(role);
@@ -176,6 +192,8 @@ CREATE INDEX IF NOT EXISTS idx_work_logs_project_id ON work_logs(project_id);
 CREATE INDEX IF NOT EXISTS idx_work_logs_status ON work_logs(status);
 CREATE INDEX IF NOT EXISTS idx_work_logs_work_date ON work_logs(work_date);
 CREATE INDEX IF NOT EXISTS idx_work_logs_created_at ON work_logs(created_at);
+CREATE INDEX IF NOT EXISTS idx_active_timers_house_id ON active_timers(house_id);
+CREATE INDEX IF NOT EXISTS idx_active_timers_project_id ON active_timers(project_id);
 
 -- Challenges table (parent-set goals for a child with deadline and optional reward)
 CREATE TABLE IF NOT EXISTS challenges (
@@ -263,6 +281,7 @@ ALTER TABLE bitcoin_price_cache ENABLE ROW LEVEL SECURITY;
 ALTER TABLE bitcoin_conversions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE projects ENABLE ROW LEVEL SECURITY;
 ALTER TABLE work_logs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE active_timers ENABLE ROW LEVEL SECURITY;
 ALTER TABLE challenges ENABLE ROW LEVEL SECURITY;
 ALTER TABLE challenge_progress ENABLE ROW LEVEL SECURITY;
 ALTER TABLE child_onchain_wallets ENABLE ROW LEVEL SECURITY;

@@ -148,6 +148,47 @@ export interface UpdateWorkLogRequest {
   workDate?: string;
 }
 
+// Work timer types (server-persisted running timer; elapsed is computed from started_at)
+export interface ActiveTimer {
+  id: number;
+  house_id: number;
+  child_id: number;
+  project_id: number;
+  started_at: string;
+  created_at: string;
+  project?: Project | null;
+}
+
+export interface StartTimerRequest {
+  childId: number;
+  projectId: number;
+}
+
+export interface ActiveTimerResponse {
+  active: boolean;
+  timer: ActiveTimer | null;
+  /** Server-computed wall-clock seconds since started_at (0 when no timer). */
+  elapsedSeconds: number;
+  /** True once the timer has run past the 24h logging cap. */
+  exceedsCap: boolean;
+}
+
+export interface StopTimerRequest {
+  childId: number;
+  description?: string;
+}
+
+export interface StopTimerResponse {
+  /** False when there was no running timer (duplicate stop) — idempotent no-op. */
+  stopped: boolean;
+  workLog: WorkLog | null;
+  elapsedSeconds: number;
+  /** True when the logged duration was capped at 24 hours. */
+  cappedAt24h: boolean;
+  /** Set when the timer stopped but no work log could be created (e.g. project deleted). */
+  warning?: string;
+}
+
 // Project types
 export type ProjectStatus = 'active' | 'inactive';
 export type WorkLogStatus = 'pending' | 'approved' | 'declined';

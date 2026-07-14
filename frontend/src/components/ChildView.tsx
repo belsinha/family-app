@@ -191,8 +191,13 @@ export default function ChildView() {
         <WorkTimer
           childId={child.id}
           projects={activeProjects}
-          onSaveLog={() => {
-            setShowWorkLog(true);
+          onLogCreated={async () => {
+            try {
+              const logs = await api.getWorkLogsByChildId(child.id);
+              setWorkLogs(logs);
+            } catch (err) {
+              console.error('Failed to refresh work logs:', err);
+            }
           }}
         />
       </div>

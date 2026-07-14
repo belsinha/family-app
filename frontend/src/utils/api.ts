@@ -1,4 +1,4 @@
-import type { Child, Point, User, AddPointsRequest, ChildBalance, ApiError, ChangePasswordRequest, ChangePasswordResponse, BitcoinConversion, ConvertBonusRequest, ConvertBonusResponse, ChildBitcoinBalance, WorkLog, AddWorkLogRequest, UpdateWorkLogRequest, Project, CreateProjectRequest, UpdateProjectRequest, ProjectStatistics, OnchainBalanceResponse, DepositUriResponse, ChildCreditPayout, SettleCreditsRequest, SettleCreditsResponse, AppleCashPayoutRequest } from '../../../shared/src/types';
+import type { Child, Point, User, AddPointsRequest, ChildBalance, ApiError, ChangePasswordRequest, ChangePasswordResponse, BitcoinConversion, ConvertBonusRequest, ConvertBonusResponse, ChildBitcoinBalance, WorkLog, AddWorkLogRequest, UpdateWorkLogRequest, Project, CreateProjectRequest, UpdateProjectRequest, ProjectStatistics, OnchainBalanceResponse, DepositUriResponse, ChildCreditPayout, SettleCreditsRequest, SettleCreditsResponse, AppleCashPayoutRequest, ActiveTimer, ActiveTimerResponse, StopTimerResponse } from '../../../shared/src/types';
 import { getApiBaseUrl } from './getApiBaseUrl';
 
 const API_BASE_URL = getApiBaseUrl();
@@ -147,6 +147,22 @@ export const api = {
     request<WorkLog>(`/work-logs/${workLogId}/approve`, {
       method: 'POST',
       body: JSON.stringify({ action }),
+    }),
+
+  // Work timer (server-persisted; elapsed always comes from the server, not client ticks)
+  startWorkTimer: (childId: number, projectId: number): Promise<{ timer: ActiveTimer; elapsedSeconds: number }> =>
+    request<{ timer: ActiveTimer; elapsedSeconds: number }>('/work-logs/timer/start', {
+      method: 'POST',
+      body: JSON.stringify({ childId, projectId }),
+    }),
+  getActiveWorkTimer: (childId?: number): Promise<ActiveTimerResponse> =>
+    request<ActiveTimerResponse>(
+      childId !== undefined ? `/work-logs/timer/active?childId=${childId}` : '/work-logs/timer/active'
+    ),
+  stopWorkTimer: (childId: number, description?: string): Promise<StopTimerResponse> =>
+    request<StopTimerResponse>('/work-logs/timer/stop', {
+      method: 'POST',
+      body: JSON.stringify({ childId, description }),
     }),
 
   // Projects
