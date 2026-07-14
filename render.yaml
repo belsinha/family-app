@@ -30,6 +30,13 @@ services:
       - key: SUPABASE_SERVICE_ROLE_KEY
         sync: false
 
+      # AI-assisted chore import is off by default. Enable only after reviewing the upload privacy
+      # notes in README.md; both settings are required before content can be sent to OpenAI.
+      # - key: OPENAI_API_KEY
+      #   sync: false
+      # - key: CHORE_IMPORT_AI
+      #   value: "1"
+
       # Bitcoin signing is OFF by default. For watch-only wallets, configure the account-level
       # public key at m/84'/coin'/0' (plain xpub/tpub encoding). No signing secret is needed.
       # - key: BITCOIN_NETWORK

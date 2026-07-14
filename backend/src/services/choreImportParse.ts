@@ -3,7 +3,19 @@ import { parseChoreHouseArea } from '../constants/choreHouseArea.js';
 
 /** pdf-parse 1.x default export (callable). Pinned to 1.1.1 — npm 2.x renamed the API and breaks `require()` as a function. */
 const require = createRequire(import.meta.url);
-const pdfParse = require('pdf-parse') as (data: Buffer) => Promise<{ text: string }>;
+const pdfParse = require('pdf-parse') as (
+  data: Buffer,
+  options?: { max?: number }
+) => Promise<{ text: string }>;
+
+/** Uploads are held fully in memory (multer.memoryStorage) — keep this conservative. */
+export const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
+/** Bounds pdf.js work on adversarial/huge PDFs; a chore list never needs more pages. */
+const MAX_PDF_PAGES = 25;
+/** Cap on characters fed to the local parsers (OpenAI input is capped separately below). */
+const MAX_TEXT_CHARS = 200_000;
+/** Cap on preview rows returned per upload. */
+const MAX_PREVIEW_ITEMS = 300;
 
 const FREQUENCY_TYPES = [
   'DAILY',
@@ -17,6 +29,77 @@ const FREQUENCY_TYPES = [
 const TIME_BLOCKS = ['MORNING', 'AFTERNOON', 'NIGHT', 'ANY'] as const;
 
 const IMAGE_MIME = new Set(['image/jpeg', 'image/png', 'image/gif', 'image/webp']);
+
+export type ChoreImportUploadKind = 'pdf' | 'txt' | 'image';
+
+const UNSUPPORTED_TYPE_MESSAGE =
+  'Unsupported file type. Use PDF, plain text (.txt), or JPEG/PNG/GIF/WebP.';
+
+function kindFromName(originalname: string): ChoreImportUploadKind | null {
+  const lower = originalname.toLowerCase();
+  if (lower.endsWith('.pdf')) return 'pdf';
+  if (lower.endsWith('.txt')) return 'txt';
+  if (/\.(jpe?g|png|gif|webp)$/.test(lower)) return 'image';
+  return null;
+}
+
+function kindFromMime(mimetype: string): ChoreImportUploadKind | null | 'unknown' {
+  const mime = (mimetype || '').toLowerCase().split(';')[0].trim();
+  if (mime === 'application/pdf') return 'pdf';
+  if (mime === 'text/plain') return 'txt';
+  if (IMAGE_MIME.has(mime)) return 'image';
+  // Browsers fall back to octet-stream when the OS has no mapping; defer to the extension.
+  if (mime === '' || mime === 'application/octet-stream') return 'unknown';
+  return null;
+}
+
+/**
+ * Both the extension and the declared MIME type must be on the allowlist, and must agree
+ * (an octet-stream/empty MIME defers to the extension). Returns null when the upload
+ * should be rejected.
+ */
+export function detectUploadKind(
+  mimetype: string,
+  originalname: string
+): ChoreImportUploadKind | null {
+  const byName = kindFromName(originalname);
+  if (!byName) return null;
+  const byMime = kindFromMime(mimetype);
+  if (byMime === null) return null;
+  if (byMime === 'unknown') return byName;
+  return byMime === byName ? byName : null;
+}
+
+/** Cheap magic-byte / content sniff so a mislabeled file can't reach the wrong parser. */
+export function contentMatchesKind(buffer: Buffer, kind: ChoreImportUploadKind): boolean {
+  if (buffer.length === 0) return false;
+  if (kind === 'pdf') {
+    // The header may be preceded by a small amount of junk per the PDF spec.
+    return buffer.subarray(0, 1024).includes('%PDF-');
+  }
+  if (kind === 'image') {
+    if (buffer.subarray(0, 3).equals(Buffer.from([0xff, 0xd8, 0xff]))) return true; // JPEG
+    if (buffer.subarray(0, 4).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47]))) return true; // PNG
+    if (buffer.subarray(0, 4).toString('latin1') === 'GIF8') return true; // GIF
+    return (
+      buffer.subarray(0, 4).toString('latin1') === 'RIFF' &&
+      buffer.subarray(8, 12).toString('latin1') === 'WEBP'
+    );
+  }
+  // txt: reject binary payloads smuggled in with a .txt name.
+  return !buffer.subarray(0, 65_536).includes(0);
+}
+
+/**
+ * AI-assisted parsing is opt-in twice over: it needs OPENAI_API_KEY *and* the explicit
+ * CHORE_IMPORT_AI=1 acknowledgment that uploaded content (which can include household
+ * members' names) will be sent to OpenAI. See README.md.
+ */
+export function aiParsingEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
+  if (!env.OPENAI_API_KEY) return false;
+  const optIn = (env.CHORE_IMPORT_AI ?? '').trim().toLowerCase();
+  return optIn === '1' || optIn === 'true' || optIn === 'yes';
+}
 
 export type CategoryMatchLevel = 'exact' | 'partial' | 'suggested' | 'fallback';
 
@@ -333,8 +416,14 @@ export function parseStructuredChoreListFromText(text: string): RawChore[] {
 }
 
 export async function extractPdfText(buffer: Buffer): Promise<string> {
-  const { text } = await pdfParse(buffer);
-  return (text ?? '').trim();
+  let text: string;
+  try {
+    ({ text } = await pdfParse(buffer, { max: MAX_PDF_PAGES }));
+  } catch {
+    // pdf.js errors can quote raw document bytes — never surface (or log) them.
+    throw new Error('Could not parse this PDF. Re-export it or try a plain-text (.txt) file.');
+  }
+  return (text ?? '').trim().slice(0, MAX_TEXT_CHARS);
 }
 
 async function openAiChatJson(messages: unknown[]): Promise<Record<string, unknown>> {
@@ -356,8 +445,9 @@ async function openAiChatJson(messages: unknown[]): Promise<Record<string, unkno
     }),
   });
   if (!res.ok) {
-    const t = await res.text();
-    throw new Error(`OpenAI request failed (${res.status}): ${t.slice(0, 800)}`);
+    // Status only — the response body is not included so no upstream detail (or anything
+    // echoing the request) can end up in a client-facing error or a log line.
+    throw new Error(`OpenAI request failed (HTTP ${res.status}). Try again later.`);
   }
   const data = (await res.json()) as {
     choices?: Array<{ message?: { content?: string } }>;
@@ -421,7 +511,7 @@ async function structureChoresWithOpenAi(
   text: string,
   categoryNames: string[]
 ): Promise<RawChore[] | null> {
-  if (!process.env.OPENAI_API_KEY) {
+  if (!aiParsingEnabled()) {
     return null;
   }
   const trimmed = text.trim().slice(0, 100_000);
@@ -579,19 +669,29 @@ function inferImageMime(mimetype: string, lower: string): string {
   return 'image/jpeg';
 }
 
+function capRawChores(raw: RawChore[]): { raw: RawChore[]; note?: string } {
+  if (raw.length <= MAX_PREVIEW_ITEMS) return { raw };
+  return {
+    raw: raw.slice(0, MAX_PREVIEW_ITEMS),
+    note: `Preview limited to the first ${MAX_PREVIEW_ITEMS} tasks — split larger files.`,
+  };
+}
+
 function tryStructuredKeyValueImport(
   text: string,
   categories: ChoreCategoryRow[],
   members: HouseholdMemberHint[] = []
 ): ImportPreviewResult | null {
   if (!looksStructuredChorePdf(text)) return null;
-  const raw = parseStructuredChoreListFromText(text);
-  if (raw.length === 0) return null;
+  const parsed = parseStructuredChoreListFromText(text);
+  if (parsed.length === 0) return null;
+  const { raw, note } = capRawChores(parsed);
   const items = toPreviewItems(raw, categories, members);
   const fallbackCount = items.filter((i) => i.categoryMatch === 'fallback').length;
   const suggestedCount = items.filter((i) => i.categoryMatch === 'suggested').length;
   const anyoneCount = items.filter((i) => i.anyoneMayComplete).length;
   const parts: string[] = [];
+  if (note) parts.push(note);
   if (fallbackCount > 0) {
     parts.push(
       `${fallbackCount} task(s) used the first category as a guess — pick the right category before adding.`
@@ -622,66 +722,77 @@ export async function buildImportPreview(opts: {
   const members = membersOpt ?? [];
   const lower = originalname.toLowerCase();
   const mime = (mimetype || '').toLowerCase();
-  const isPdf = mime === 'application/pdf' || lower.endsWith('.pdf');
-  const isTxt = mime === 'text/plain' || lower.endsWith('.txt');
-  const isImage =
-    IMAGE_MIME.has(mime) ||
-    /\.(jpe?g|png|gif|webp)$/i.test(lower) ||
-    (mime === 'application/octet-stream' && /\.(jpe?g|png|gif|webp)$/i.test(lower));
+
+  const kind = detectUploadKind(mimetype, originalname);
+  if (!kind) {
+    throw new Error(UNSUPPORTED_TYPE_MESSAGE);
+  }
+  if (buffer.length === 0) {
+    throw new Error('The uploaded file is empty.');
+  }
+  if (buffer.length > MAX_UPLOAD_BYTES) {
+    throw new Error(`File too large. Max ${MAX_UPLOAD_BYTES / (1024 * 1024)}MB.`);
+  }
+  if (!contentMatchesKind(buffer, kind)) {
+    throw new Error(
+      `The file content does not look like a ${kind === 'txt' ? 'plain-text' : kind.toUpperCase()} file. ${UNSUPPORTED_TYPE_MESSAGE}`
+    );
+  }
 
   const categoryNames = categories.map((c) => c.name);
 
-  if (isImage && !isPdf) {
-    if (!process.env.OPENAI_API_KEY) {
+  if (kind === 'image') {
+    if (!aiParsingEnabled()) {
       throw new Error(
-        'Image import needs OPENAI_API_KEY on the server for text recognition. Use a text-based PDF, or ask your host to set the API key.'
+        'Image import is disabled on this server. It requires OPENAI_API_KEY and CHORE_IMPORT_AI=1, because the image is sent to OpenAI for text recognition — see README.md. Use a text-based PDF or .txt file instead.'
       );
     }
     const imgMime = inferImageMime(mime, lower);
     const b64 = buffer.toString('base64');
-    const raw = await structureChoresFromImageOpenAi(b64, imgMime, categoryNames);
+    const { raw, note } = capRawChores(
+      await structureChoresFromImageOpenAi(b64, imgMime, categoryNames)
+    );
     return {
       parseMode: 'openai',
+      message: note,
       items: toPreviewItems(raw, categories, members),
     };
   }
 
-  if (isTxt && !isPdf) {
-    const text = buffer.toString('utf8');
+  if (kind === 'txt') {
+    const text = buffer.toString('utf8').slice(0, MAX_TEXT_CHARS);
     const structuredTxt = tryStructuredKeyValueImport(text, categories, members);
     if (structuredTxt) return structuredTxt;
 
     let parseMode: 'openai' | 'lines' = 'lines';
     const fromAi = await structureChoresWithOpenAi(text, categoryNames);
-    const raw: RawChore[] =
-      fromAi && fromAi.length > 0 ? fromAi : naiveLinesFromText(text);
     if (fromAi && fromAi.length > 0) parseMode = 'openai';
+    const { raw, note } = capRawChores(
+      fromAi && fromAi.length > 0 ? fromAi : naiveLinesFromText(text)
+    );
     if (raw.length === 0) {
       throw new Error('No chore lines were found in the text file.');
     }
     const items = toPreviewItems(raw, categories, members);
     const fallbackCount = items.filter((i) => i.categoryMatch === 'fallback').length;
     const suggestedCount = items.filter((i) => i.categoryMatch === 'suggested').length;
+    const categoryNote =
+      fallbackCount > 0
+        ? `${fallbackCount} task(s) used the first category as a guess — adjust after import.`
+        : suggestedCount > 0
+          ? `${suggestedCount} task(s) category was inferred from wording — confirm before adding.`
+          : undefined;
     return {
       parseMode,
-      message:
-        fallbackCount > 0
-          ? `${fallbackCount} task(s) used the first category as a guess — adjust after import.`
-          : suggestedCount > 0
-            ? `${suggestedCount} task(s) category was inferred from wording — confirm before adding.`
-            : undefined,
+      message: [note, categoryNote].filter(Boolean).join(' ') || undefined,
       items,
     };
-  }
-
-  if (!isPdf) {
-    throw new Error('Unsupported file type. Use PDF, plain text (.txt), or JPEG/PNG/GIF/WebP.');
   }
 
   const pdfText = await extractPdfText(buffer);
   if (!pdfText || pdfText.length < 8) {
     throw new Error(
-      'Could not read enough text from this PDF. Export with selectable text, or upload a clear photo (image) if OPENAI_API_KEY is set on the server.'
+      'Could not read enough text from this PDF. Export with selectable text, or upload a clear photo (image) if AI parsing is enabled on the server.'
     );
   }
 
@@ -690,8 +801,10 @@ export async function buildImportPreview(opts: {
 
   let parseMode: 'openai' | 'lines' = 'lines';
   const fromAi = await structureChoresWithOpenAi(pdfText, categoryNames);
-  const raw: RawChore[] = fromAi && fromAi.length > 0 ? fromAi : naiveLinesFromText(pdfText);
   if (fromAi && fromAi.length > 0) parseMode = 'openai';
+  const { raw, note } = capRawChores(
+    fromAi && fromAi.length > 0 ? fromAi : naiveLinesFromText(pdfText)
+  );
 
   if (raw.length === 0) {
     throw new Error('No chore lines were found. Check the document or add chores manually.');
@@ -700,7 +813,7 @@ export async function buildImportPreview(opts: {
   const items = toPreviewItems(raw, categories, members);
   const fallbackCount = items.filter((i) => i.categoryMatch === 'fallback').length;
   const suggestedCount = items.filter((i) => i.categoryMatch === 'suggested').length;
-  const message =
+  const categoryNote =
     fallbackCount > 0
       ? `${fallbackCount} task(s) used the first category as a guess — adjust categories after import.`
       : suggestedCount > 0
@@ -709,7 +822,7 @@ export async function buildImportPreview(opts: {
 
   return {
     parseMode,
-    message,
+    message: [note, categoryNote].filter(Boolean).join(' ') || undefined,
     items,
   };
 }

@@ -5,6 +5,9 @@ import {
   parseStructuredChoreListFromText,
   matchCategoryId,
   resolveAssigneeIdsFromPersonHint,
+  detectUploadKind,
+  contentMatchesKind,
+  aiParsingEnabled,
 } from './choreImportParse.js';
 
 const SAMPLE = `Task: Walk dog
@@ -121,4 +124,50 @@ test('resolveAssigneeIdsFromPersonHint matches household names', () => {
   assert.deepEqual(resolveAssigneeIdsFromPersonHint('Alex Rivera', false, members), [10]);
   assert.deepEqual(resolveAssigneeIdsFromPersonHint('Sam and Alex Rivera', false, members), [11, 10]);
   assert.deepEqual(resolveAssigneeIdsFromPersonHint('Anyone', true, members), []);
+});
+
+test('detectUploadKind requires an allowlisted extension and an agreeing MIME type', () => {
+  assert.equal(detectUploadKind('application/pdf', 'chores.pdf'), 'pdf');
+  assert.equal(detectUploadKind('text/plain', 'chores.txt'), 'txt');
+  assert.equal(detectUploadKind('image/png', 'chores.png'), 'image');
+  // octet-stream / empty MIME defers to the extension
+  assert.equal(detectUploadKind('application/octet-stream', 'chores.jpg'), 'image');
+  assert.equal(detectUploadKind('', 'chores.pdf'), 'pdf');
+  // MIME/extension disagreement is rejected
+  assert.equal(detectUploadKind('application/pdf', 'chores.png'), null);
+  assert.equal(detectUploadKind('image/png', 'chores.pdf'), null);
+  // types off the allowlist are rejected regardless of the other side
+  assert.equal(detectUploadKind('text/html', 'chores.html'), null);
+  assert.equal(detectUploadKind('application/octet-stream', 'chores.exe'), null);
+  assert.equal(detectUploadKind('image/svg+xml', 'chores.svg'), null);
+  assert.equal(detectUploadKind('application/pdf', 'chores'), null);
+});
+
+test('contentMatchesKind sniffs magic bytes and rejects mislabeled content', () => {
+  const pdf = Buffer.from('%PDF-1.7\nrest of file');
+  const png = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47]), Buffer.from('rest')]);
+  const jpeg = Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe0]), Buffer.from('rest')]);
+  const webp = Buffer.from('RIFF....WEBPVP8 ');
+  const txt = Buffer.from('Task: Walk dog\nFrequency: Daily\n');
+  const binary = Buffer.from([0x4d, 0x5a, 0x00, 0x01, 0x02]);
+
+  assert.equal(contentMatchesKind(pdf, 'pdf'), true);
+  assert.equal(contentMatchesKind(png, 'image'), true);
+  assert.equal(contentMatchesKind(jpeg, 'image'), true);
+  assert.equal(contentMatchesKind(webp, 'image'), true);
+  assert.equal(contentMatchesKind(txt, 'txt'), true);
+
+  assert.equal(contentMatchesKind(txt, 'pdf'), false);
+  assert.equal(contentMatchesKind(txt, 'image'), false);
+  assert.equal(contentMatchesKind(binary, 'txt'), false, 'binary smuggled as .txt');
+  assert.equal(contentMatchesKind(Buffer.alloc(0), 'txt'), false, 'empty file');
+});
+
+test('aiParsingEnabled needs both OPENAI_API_KEY and the CHORE_IMPORT_AI opt-in', () => {
+  assert.equal(aiParsingEnabled({}), false);
+  assert.equal(aiParsingEnabled({ OPENAI_API_KEY: 'sk-x' }), false);
+  assert.equal(aiParsingEnabled({ CHORE_IMPORT_AI: '1' }), false);
+  assert.equal(aiParsingEnabled({ OPENAI_API_KEY: 'sk-x', CHORE_IMPORT_AI: '0' }), false);
+  assert.equal(aiParsingEnabled({ OPENAI_API_KEY: 'sk-x', CHORE_IMPORT_AI: '1' }), true);
+  assert.equal(aiParsingEnabled({ OPENAI_API_KEY: 'sk-x', CHORE_IMPORT_AI: 'true' }), true);
 });
