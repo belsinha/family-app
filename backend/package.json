@@ -12,8 +12,9 @@
     "db:chores:seed": "npm run db:chores:migrate && node scripts/with-chores-db-url.mjs npx tsx prisma/seed-chores.ts",
     "db:chores:seed:reset": "node scripts/chores-seed-reset.mjs",
     "db:chores:reset": "node scripts/with-chores-db-url.mjs npx prisma migrate reset --force",
-    "test": "node --import ./scripts/test-env.mjs --import tsx --experimental-test-module-mocks --test src/routes/authz.test.ts src/db/schemaAuthorization.test.ts src/services/scoring.test.ts src/services/taskGenerator.test.ts src/services/allowance.test.ts src/services/choreImportParse.test.ts src/bitcoinWalletConfig.test.ts src/services/bitcoinWalletDerivation.test.ts",
-    "test:authz": "node --import ./scripts/test-env.mjs --import tsx --experimental-test-module-mocks --test src/routes/authz.test.ts src/db/schemaAuthorization.test.ts"
+    "test": "node --import ./scripts/test-env.mjs --import tsx --experimental-test-module-mocks --test src/routes/authz.test.ts src/db/schemaAuthorization.test.ts src/services/scoring.test.ts src/services/taskGenerator.test.ts src/services/allowance.test.ts src/services/choreImportParse.test.ts src/bitcoinWalletConfig.test.ts src/services/bitcoinWalletDerivation.test.ts src/services/workTimer.test.ts src/routes/workTimer.test.ts",
+    "test:authz": "node --import ./scripts/test-env.mjs --import tsx --experimental-test-module-mocks --test src/routes/authz.test.ts src/db/schemaAuthorization.test.ts",
+    "test:timer": "node --import ./scripts/test-env.mjs --import tsx --experimental-test-module-mocks --test src/services/workTimer.test.ts src/routes/workTimer.test.ts src/db/schemaAuthorization.test.ts"
   },
   "dependencies": {
     "@bitcoinerlab/secp256k1": "^1.2.0",

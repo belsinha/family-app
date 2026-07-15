@@ -20,6 +20,7 @@ test('Supabase application tables are deny-by-default under RLS', () => {
     'bitcoin_conversions',
     'projects',
     'work_logs',
+    'active_timers',
     'challenges',
     'challenge_progress',
     'child_onchain_wallets',
@@ -47,9 +48,21 @@ test('work logs enforce child and project ownership with the same house key', ()
   );
 });
 
+test('active timers enforce child and project ownership with the same house key', () => {
+  assert.match(
+    schema,
+    /CREATE TABLE IF NOT EXISTS active_timers[\s\S]*FOREIGN KEY\s*\(child_id,\s*house_id\)\s*REFERENCES\s+children\s*\(id,\s*house_id\)/i
+  );
+  assert.match(
+    schema,
+    /CREATE TABLE IF NOT EXISTS active_timers[\s\S]*FOREIGN KEY\s*\(project_id,\s*house_id\)\s*REFERENCES\s+projects\s*\(id,\s*house_id\)/i
+  );
+});
+
 test('runtime-created Supabase tables also enable RLS', () => {
   assert.match(bitcoinMigration, /ALTER TABLE bitcoin_price_cache ENABLE ROW LEVEL SECURITY/);
   assert.match(bitcoinMigration, /ALTER TABLE bitcoin_conversions ENABLE ROW LEVEL SECURITY/);
   assert.match(projectMigration, /ALTER TABLE projects ENABLE ROW LEVEL SECURITY/);
   assert.match(initMigration, /ALTER TABLE work_logs ENABLE ROW LEVEL SECURITY/);
+  assert.match(initMigration, /ALTER TABLE active_timers ENABLE ROW LEVEL SECURITY/);
 });

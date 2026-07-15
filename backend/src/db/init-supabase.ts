@@ -4,6 +4,78 @@ import { migrateBitcoinTables, cleanupOrphanedConversions } from './migrate-bitc
 import { migrateProjectsTable, migrateWorkLogsForProjects } from './migrate-project-tables.js';
 
 /**
+ * Migrate active_timers table (persistent work timer) - creates it if it doesn't exist.
+ * Same strategy as the work_logs migration: create via direct pg connection when a
+ * DATABASE_URL is available, otherwise print the SQL file to run manually.
+ */
+async function migrateActiveTimersTable(): Promise<boolean> {
+  const supabase = getSupabaseClient();
+
+  const { error: checkError } = await supabase
+    .from('active_timers')
+    .select('id')
+    .limit(1);
+
+  if (!checkError) {
+    return false; // Table already exists
+  }
+
+  const errorMsg = checkError.message?.toLowerCase() || '';
+  const errorCode = checkError.code || '';
+  const tableMissing =
+    errorMsg.includes('relation') ||
+    errorMsg.includes('does not exist') ||
+    errorMsg.includes('could not find the table') ||
+    errorMsg.includes('schema cache') ||
+    errorCode === 'PGRST116' ||
+    errorCode === '42P01';
+
+  if (!tableMissing) {
+    throw checkError;
+  }
+
+  const createSql = `
+    CREATE TABLE IF NOT EXISTS active_timers (
+      id BIGSERIAL PRIMARY KEY,
+      house_id BIGINT NOT NULL,
+      child_id BIGINT NOT NULL,
+      project_id BIGINT NOT NULL,
+      started_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+      created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+      CONSTRAINT active_timers_child_id_key UNIQUE (child_id),
+      CONSTRAINT active_timers_house_id_fkey FOREIGN KEY (house_id) REFERENCES houses(id) ON DELETE CASCADE,
+      CONSTRAINT active_timers_child_house_fkey FOREIGN KEY (child_id, house_id) REFERENCES children(id, house_id) ON DELETE CASCADE,
+      CONSTRAINT active_timers_project_house_fkey FOREIGN KEY (project_id, house_id) REFERENCES projects(id, house_id) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_active_timers_house_id ON active_timers(house_id);
+    CREATE INDEX IF NOT EXISTS idx_active_timers_project_id ON active_timers(project_id);
+    ALTER TABLE active_timers ENABLE ROW LEVEL SECURITY;
+  `;
+
+  const dbUrl = process.env.DATABASE_URL || process.env.SUPABASE_DB_URL;
+  if (dbUrl) {
+    try {
+      const { Pool } = await import('pg');
+      const pool = new Pool({
+        connectionString: dbUrl,
+        ssl: dbUrl.includes('sslmode=require') ? { rejectUnauthorized: false } : undefined,
+      });
+      await pool.query(createSql);
+      await pool.end();
+      console.log('active_timers table created successfully');
+      return true;
+    } catch (error) {
+      console.warn('Failed to create active_timers table via direct PostgreSQL connection:', error);
+    }
+  }
+
+  console.warn('⚠️  Could not automatically create active_timers table (persistent work timer).');
+  console.warn('   Please run this SQL in the Supabase SQL editor:');
+  console.warn('   File: backend/src/db/create-active-timers-table.sql');
+  return false;
+}
+
+/**
  * Migrate work_logs table - creates it if it doesn't exist
  */
 async function migrateWorkLogsTable(): Promise<boolean> {
@@ -233,6 +305,14 @@ export async function initDatabase() {
       // Don't throw - allow app to continue even if migration doesn't complete yet
     }
     
+    // Migrate active_timers table (persistent work timer) if it doesn't exist
+    try {
+      await migrateActiveTimersTable();
+    } catch (error) {
+      console.warn('Active timers table migration failed (non-critical):', error);
+      // Don't throw - the timer endpoints will fail until the table exists, but the app runs
+    }
+
     // Clean up orphaned conversions (those with NULL point_id)
     // This handles conversions created before we added point_id validation
     // Run this separately so it always runs, even if migration failed

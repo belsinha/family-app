@@ -1,4 +1,4 @@
-import { Router } from 'express';
+import { Router, type Response } from 'express';
 import {
   addWorkLog,
   getWorkLogsByChildId,
@@ -8,8 +8,21 @@ import {
   updateWorkLogStatus,
 } from '../db/queries/work-logs.js';
 import { authenticate, requireRole, type AuthRequest } from '../middleware/auth.js';
+import { getChildByUserId } from '../db/queries/children.js';
 import { authorizeChildAccess, listAccessibleChildren } from '../services/childAccess.js';
 import { getProjectById } from '../db/queries/projects.js';
+import {
+  getActiveTimerByChildId,
+  startActiveTimer,
+  claimActiveTimer,
+  TimerAlreadyRunningError,
+} from '../db/queries/work-timers.js';
+import {
+  computeElapsedSeconds,
+  exceedsTimerCap,
+  elapsedSecondsToLoggedHours,
+  MAX_TIMER_SECONDS,
+} from '../services/workTimer.js';
 import { addPoints } from '../db/queries/points.js';
 import { getOrFetchPrice } from '../services/bitcoin.js';
 import { createConversion } from '../db/queries/bitcoin.js';
@@ -20,6 +33,176 @@ const router = Router();
 // Constants for Bitcoin conversion (matching points.ts)
 const SATOSHIS_PER_BONUS_POINT = 2_500;
 const SATOSHIS_PER_BTC = 100_000_000;
+
+/**
+ * Resolves which child a timer request targets and enforces the existing child/house
+ * authorization rules. Children may only act on themselves, parents only on children in
+ * their house, and family accounts have no child-scoped access.
+ */
+async function resolveTimerTarget(
+  req: AuthRequest,
+  res: Response,
+  childIdRaw: unknown
+): Promise<{ childId: number; houseId: number } | null> {
+  const requestedId =
+    childIdRaw === undefined || childIdRaw === null || childIdRaw === ''
+      ? undefined
+      : Number(childIdRaw);
+
+  if (requestedId !== undefined && (!Number.isInteger(requestedId) || requestedId <= 0)) {
+    res.status(400).json({ error: 'Invalid child ID' });
+    return null;
+  }
+
+  let childId = requestedId;
+  if (childId === undefined && req.user?.role === 'child') {
+    childId = (await getChildByUserId(req.user.userId))?.id;
+  }
+
+  if (childId === undefined) {
+    res.status(400).json({ error: 'Missing required field: childId' });
+    return null;
+  }
+
+  const access = await authorizeChildAccess(req.user!, childId);
+  if (!access.ok) {
+    res.status(access.status).json({ error: access.error });
+    return null;
+  }
+  if (access.child.house_id == null) {
+    res.status(403).json({ error: 'Child is not assigned to a house' });
+    return null;
+  }
+  return { childId: access.child.id, houseId: access.child.house_id };
+}
+
+// Start the persistent work timer. Exactly one timer may run per child (enforced by a
+// UNIQUE constraint); starting while one runs returns 409 with the running timer.
+router.post('/timer/start', authenticate, async (req: AuthRequest, res, next) => {
+  try {
+    const target = await resolveTimerTarget(req, res, req.body?.childId);
+    if (target === null) return;
+
+    const projectId = Number(req.body?.projectId);
+    if (!Number.isInteger(projectId) || projectId <= 0) {
+      return res.status(400).json({ error: 'Missing required field: projectId' });
+    }
+
+    // Same project rules as creating a work log directly
+    const project = await getProjectById(projectId, target.houseId);
+    if (!project) {
+      return res.status(404).json({ error: 'Project not found' });
+    }
+    if (project.status !== 'active') {
+      return res.status(400).json({ error: 'Cannot start a timer for inactive project' });
+    }
+    const today = new Date().toISOString().split('T')[0];
+    if (project.start_date > today) {
+      return res.status(400).json({ error: 'Project has not started yet' });
+    }
+    if (project.end_date && project.end_date < today) {
+      return res.status(400).json({ error: 'Project has ended' });
+    }
+
+    const respondAlreadyRunning = (timer: NonNullable<Awaited<ReturnType<typeof getActiveTimerByChildId>>>) =>
+      res.status(409).json({
+        error: 'A timer is already running for this child. Stop it before starting a new one.',
+        timer,
+        elapsedSeconds: computeElapsedSeconds(timer.started_at),
+      });
+
+    const existing = await getActiveTimerByChildId(target.childId, target.houseId);
+    if (existing) {
+      return respondAlreadyRunning(existing);
+    }
+
+    try {
+      const timer = await startActiveTimer(target.houseId, target.childId, projectId);
+      return res.status(201).json({ timer, elapsedSeconds: 0 });
+    } catch (error) {
+      // Lost a race with another device starting at the same moment
+      if (error instanceof TimerAlreadyRunningError) {
+        const racing = await getActiveTimerByChildId(target.childId, target.houseId);
+        if (racing) return respondAlreadyRunning(racing);
+        return res.status(409).json({ error: 'A timer is already running for this child.' });
+      }
+      throw error;
+    }
+  } catch (error) {
+    next(error);
+  }
+});
+
+// Read the running timer with server-computed elapsed seconds (never client ticks).
+// Children get their own; parents pass ?childId=.
+router.get('/timer/active', authenticate, async (req: AuthRequest, res, next) => {
+  try {
+    const target = await resolveTimerTarget(req, res, req.query.childId);
+    if (target === null) return;
+
+    const timer = await getActiveTimerByChildId(target.childId, target.houseId);
+    if (!timer) {
+      return res.json({ active: false, timer: null, elapsedSeconds: 0, exceedsCap: false });
+    }
+
+    const elapsedSeconds = computeElapsedSeconds(timer.started_at);
+    res.json({ active: true, timer, elapsedSeconds, exceedsCap: exceedsTimerCap(elapsedSeconds) });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// Stop the timer: atomically claims the active_timers row, then creates a pending work
+// log with the full wall-clock duration. A duplicate stop (row already claimed) is an
+// idempotent no-op — 200 with stopped:false and no second work log.
+router.post('/timer/stop', authenticate, async (req: AuthRequest, res, next) => {
+  try {
+    const target = await resolveTimerTarget(req, res, req.body?.childId);
+    if (target === null) return;
+
+    const timer = await claimActiveTimer(target.childId, target.houseId);
+    if (!timer) {
+      return res.json({ stopped: false, workLog: null, elapsedSeconds: 0, cappedAt24h: false });
+    }
+
+    // Clock skew (started_at in the future) clamps to 0; logged time caps at 24h.
+    const elapsedSeconds = computeElapsedSeconds(timer.started_at);
+    const cappedAt24h = elapsedSeconds > MAX_TIMER_SECONDS;
+    const hours = elapsedSecondsToLoggedHours(elapsedSeconds);
+
+    const description =
+      typeof req.body?.description === 'string' ? req.body.description.trim() : '';
+
+    // The project may have been deleted while the timer ran; without it no work log can
+    // be created (FK), so report the stop with a warning instead of failing.
+    const project = await getProjectById(timer.project_id, target.houseId);
+    if (!project) {
+      return res.json({
+        stopped: true,
+        workLog: null,
+        elapsedSeconds,
+        cappedAt24h,
+        warning: 'The project for this timer no longer exists, so the time could not be logged.',
+      });
+    }
+
+    // Deliberately allow projects that went inactive or ended while the timer ran: the
+    // work was started while the project was valid, and the log still needs parent approval.
+    const workDate = new Date(timer.started_at).toISOString().split('T')[0];
+    const workLog = await addWorkLog(
+      target.houseId,
+      target.childId,
+      timer.project_id,
+      hours,
+      description,
+      workDate
+    );
+
+    res.status(201).json({ stopped: true, workLog, elapsedSeconds, cappedAt24h });
+  } catch (error) {
+    next(error);
+  }
+});
 
 // Add work log - children can create for themselves
 router.post('/', authenticate, async (req: AuthRequest, res, next) => {
