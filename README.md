@@ -205,6 +205,22 @@ Chores **migrations** run automatically when the Prisma client module loads (`np
 
 **Bitcoin wallet:** Cloud deployments are watch-only or disabled by default. Configure `BITCOIN_XPUB` for receive addresses and balances without a signing key. Server-side signing requires an explicit opt-in and a runtime-managed secret; follow [docs/bitcoin-wallet-operations.md](docs/bitcoin-wallet-operations.md) before enabling it.
 
+### Chore import uploads and AI parsing
+
+`POST /api/templates/import-parse` is limited to authenticated chore editors and accepts one PDF,
+`.txt`, JPEG, PNG, GIF, or WebP file up to **10MB**. Uploads are held in memory for the request
+only and are never written to disk or logged. The extension and declared MIME type must be
+allowlisted and agree, and the content is checked before it reaches a parser. Work is bounded to
+25 PDF pages, 200,000 extracted characters, and 300 preview tasks.
+
+AI parsing is disabled by default. Structured `Task:`/`Category:` text parses locally. Freeform
+text/PDF and image OCR can use OpenAI only when both `OPENAI_API_KEY` and `CHORE_IMPORT_AI=1` are
+set. `CHORE_IMPORT_AI=1` is the explicit acknowledgment that uploaded content, which may contain
+household members' first names, will be sent to OpenAI's API. Without both settings, images are
+rejected and text/PDF imports use local parsers, so uploaded content does not leave the server.
+Parser and upstream failures return bounded errors that do not include file bytes or provider
+response bodies.
+
 ### Frontend
 Create a `.env` file in the `frontend/` directory (optional):
 ```

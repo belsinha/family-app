@@ -1,9 +1,13 @@
-import { Router } from 'express';
+import { Router, type NextFunction, type Response } from 'express';
 import multer from 'multer';
 import type { Prisma } from '@prisma/client';
 import { prisma } from '../db/prisma.js';
 import { authenticate, type AuthRequest } from '../middleware/auth.js';
-import { buildImportPreview } from '../services/choreImportParse.js';
+import {
+  buildImportPreview,
+  detectUploadKind,
+  MAX_UPLOAD_BYTES,
+} from '../services/choreImportParse.js';
 import {
   bootstrapEmptyChoresHousehold,
   hasFullChoresAccess,
@@ -16,10 +20,35 @@ import { parseChoreHouseArea } from '../constants/choreHouseArea.js';
 const router = Router();
 router.use(authenticate, requireChoresHouseholdAccess);
 
+// Uploads stay in memory for this request only. Bound buffering and reject unsupported declared
+// types here; buildImportPreview independently verifies the file contents before parsing.
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 15 * 1024 * 1024 },
+  limits: { fileSize: MAX_UPLOAD_BYTES, files: 1, fields: 5 },
+  fileFilter: (_req, file, cb) => {
+    if (detectUploadKind(file.mimetype, file.originalname) == null) {
+      return cb(
+        new Error('Unsupported file type. Use PDF, plain text (.txt), or JPEG/PNG/GIF/WebP.')
+      );
+    }
+    cb(null, true);
+  },
 });
+
+/** Convert upload failures to bounded JSON errors without exposing file or parser contents. */
+function importUpload(req: AuthRequest, res: Response, next: NextFunction) {
+  upload.single('file')(req, res, (err: unknown) => {
+    if (!err) return next();
+    if (err instanceof multer.MulterError && err.code === 'LIMIT_FILE_SIZE') {
+      return res
+        .status(413)
+        .json({ error: `File too large. Max ${MAX_UPLOAD_BYTES / (1024 * 1024)}MB.` });
+    }
+    return res.status(415).json({
+      error: 'Upload rejected. Send one PDF, .txt, JPEG, PNG, GIF, or WebP file.',
+    });
+  });
+}
 
 const templateInclude = {
   category: true,
@@ -124,7 +153,7 @@ router.post(
   '/import-parse',
   authenticate,
   requireCanEditChores,
-  upload.single('file'),
+  importUpload,
   async (req: AuthRequest, res, next) => {
     try {
       if (!req.file?.buffer) {
