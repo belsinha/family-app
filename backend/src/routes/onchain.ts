@@ -13,6 +13,7 @@ import {
   getConfiguredNetwork,
   buildAndSignTx,
   getHotWalletAddress,
+  isSigningEnabled,
 } from '../services/bitcoinWallet.js';
 import {
   getAddressBalance,
@@ -74,6 +75,7 @@ router.get('/onchain-wallet/:childId', authenticate, async (req: AuthRequest, re
       network: wallet.network,
       confirmedSat: balance.confirmedSat,
       unconfirmedSat: balance.unconfirmedSat,
+      signingEnabled: isSigningEnabled(),
     });
   } catch (error) {
     next(error);
@@ -119,6 +121,13 @@ router.post(
   requireRole('parent'),
   async (req: AuthRequest, res, next) => {
     try {
+      if (!isSigningEnabled()) {
+        return res.status(503).json({
+          error:
+            'On-chain settlement is disabled because this server is watch-only. Use a manual payout, or follow docs/bitcoin-wallet-operations.md before enabling managed server-side signing.',
+        });
+      }
+
       const { childId, satoshis }: SettleCreditsRequest = req.body;
 
       if (!childId || !satoshis || satoshis <= 0) {

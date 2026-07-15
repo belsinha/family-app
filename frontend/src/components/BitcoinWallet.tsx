@@ -135,7 +135,9 @@ export default function BitcoinWallet({ childId, childName, onPayoutComplete }: 
     { key: 'deposit', label: 'Receive' },
     ...(isParent
       ? [
-          { key: 'settle' as Tab, label: 'Settle to Chain', parentOnly: true },
+          ...(wallet?.signingEnabled
+            ? [{ key: 'settle' as Tab, label: 'Settle to Chain', parentOnly: true }]
+            : []),
           { key: 'apple' as Tab, label: 'Apple Cash', parentOnly: true },
         ]
       : []),

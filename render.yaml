@@ -30,6 +30,23 @@ services:
       - key: SUPABASE_SERVICE_ROLE_KEY
         sync: false
 
+      # Bitcoin signing is OFF by default. For watch-only wallets, configure the account-level
+      # public key at m/84'/coin'/0' (plain xpub/tpub encoding). No signing secret is needed.
+      # - key: BITCOIN_NETWORK
+      #   value: testnet
+      # - key: BITCOIN_XPUB
+      #   sync: false
+
+      # Server-side signing is high risk and must be explicitly enabled. Store exactly one signing
+      # secret in Render's managed Environment store (never in this file, logs, or build args).
+      # Read docs/bitcoin-wallet-operations.md before enabling or rotating it.
+      # - key: BITCOIN_ENABLE_HOT_WALLET
+      #   value: "true"
+      # - key: BITCOIN_MNEMONIC
+      #   sync: false
+      # - key: BITCOIN_XPRV
+      #   sync: false
+
   # Optional: separate static site on Render requires /* → /index.html rewrite, and build with
   # VITE_API_URL=https://<your-backend>.onrender.com (no /api suffix; the app adds /api).
   # frontend/public/api-config.js avoids 404/MIME errors; without VITE_API_URL, API calls hit the wrong host.
