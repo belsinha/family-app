@@ -9,10 +9,12 @@ import {
   hasFullChoresAccess,
   requireChoreEditorOrParent,
   resolveHouseholdMemberIdForChildUser,
+  requireChoresHouseholdAccess,
 } from '../services/choresAccess.js';
 import { parseChoreHouseArea } from '../constants/choreHouseArea.js';
 
 const router = Router();
+router.use(authenticate, requireChoresHouseholdAccess);
 
 const upload = multer({
   storage: multer.memoryStorage(),

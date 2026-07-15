@@ -10,22 +10,17 @@ import {
 import { authenticate, requireRole, type AuthRequest } from '../middleware/auth.js';
 import { getChildByUserId } from '../db/queries/children.js';
 import { addPoints } from '../db/queries/points.js';
+import { authorizeChildAccess } from '../services/childAccess.js';
 
 const router = Router();
 
-function ensureChildAccess(req: AuthRequest, childId: number): Promise<{ allowed: boolean }> {
-  if (req.user?.role === 'parent') return Promise.resolve({ allowed: true });
-  return getChildByUserId(req.user!.userId).then((child) => ({
-    allowed: !!child && child.id === childId,
-  }));
+// Child sees only self, parent only own-house children, family none.
+async function ensureChildAccess(req: AuthRequest, childId: number): Promise<{ allowed: boolean }> {
+  const access = await authorizeChildAccess(req.user!, childId);
+  return { allowed: access.ok };
 }
 
-function ensureChallengeAccess(req: AuthRequest, challengeChildId: number): Promise<{ allowed: boolean }> {
-  if (req.user?.role === 'parent') return Promise.resolve({ allowed: true });
-  return getChildByUserId(req.user!.userId).then((child) => ({
-    allowed: !!child && child.id === challengeChildId,
-  }));
-}
+const ensureChallengeAccess = ensureChildAccess;
 
 // List challenges for a child (parent: any child; child: only self)
 router.get('/child/:childId', authenticate, async (req: AuthRequest, res, next) => {
@@ -70,6 +65,12 @@ router.post('/', authenticate, requireRole('parent'), async (req: AuthRequest, r
 
     if (rewardType === 'bonus_points' && (rewardPoints == null || Number(rewardPoints) < 0)) {
       return res.status(400).json({ error: 'rewardPoints required and must be >= 0 for bonus_points' });
+    }
+
+    // Parents may only create challenges for children in their own house.
+    const access = await authorizeChildAccess(req.user!, Number(childId));
+    if (!access.ok) {
+      return res.status(access.status).json({ error: access.error });
     }
 
     const challenge = await createChallenge({

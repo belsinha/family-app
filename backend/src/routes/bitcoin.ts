@@ -3,9 +3,10 @@ import { authenticate, requireRole, type AuthRequest } from '../middleware/auth.
 import { getOrFetchPrice, refreshPriceCache } from '../services/bitcoin.js';
 import { createConversion, getConversionsByChildId } from '../db/queries/bitcoin.js';
 import { getChildBalance } from '../db/queries/points.js';
-import { getChildByUserId } from '../db/queries/children.js';
+import { authorizeChildAccess } from '../services/childAccess.js';
 import { cleanupOrphanedConversions } from '../db/migrate-bitcoin-tables.js';
 import type { ConvertBonusRequest, ConvertBonusResponse } from '../types.js';
+import { authorizeHouseAccess } from '../services/houseAccess.js';
 
 const router = Router();
 
@@ -70,7 +71,13 @@ router.post('/convert', authenticate, requireRole('parent'), async (req: AuthReq
     if (bonusPoints <= 0) {
       return res.status(400).json({ error: 'Bonus points must be greater than 0' });
     }
-    
+
+    // Parents may only convert points for children in their own house.
+    const access = await authorizeChildAccess(req.user!, childId);
+    if (!access.ok) {
+      return res.status(access.status).json({ error: access.error });
+    }
+
     // Check child has sufficient bonus points
     const balance = await getChildBalance(childId);
     if (balance.bonus < bonusPoints) {
@@ -130,18 +137,12 @@ router.get('/conversions/:childId', authenticate, async (req: AuthRequest, res, 
   try {
     const childId = parseInt(req.params.childId, 10);
     
-    if (isNaN(childId)) {
-      return res.status(400).json({ error: 'Invalid child ID' });
+    // Owner/house guard: child sees only self, parent only own-house children, family none.
+    const access = await authorizeChildAccess(req.user!, childId);
+    if (!access.ok) {
+      return res.status(access.status).json({ error: access.error });
     }
-    
-    // If child user, verify they're accessing their own data
-    if (req.user?.role === 'child') {
-      const child = await getChildByUserId(req.user.userId);
-      if (!child || child.id !== childId) {
-        return res.status(403).json({ error: 'Access denied' });
-      }
-    }
-    
+
     const conversions = await getConversionsByChildId(childId);
     res.json(conversions);
   } catch (error) {
@@ -158,18 +159,12 @@ router.get('/balance/:childId', authenticate, async (req: AuthRequest, res, next
   try {
     const childId = parseInt(req.params.childId, 10);
     
-    if (isNaN(childId)) {
-      return res.status(400).json({ error: 'Invalid child ID' });
+    // Owner/house guard: child sees only self, parent only own-house children, family none.
+    const access = await authorizeChildAccess(req.user!, childId);
+    if (!access.ok) {
+      return res.status(access.status).json({ error: access.error });
     }
-    
-    // If child user, verify they're accessing their own data
-    if (req.user?.role === 'child') {
-      const child = await getChildByUserId(req.user.userId);
-      if (!child || child.id !== childId) {
-        return res.status(403).json({ error: 'Access denied' });
-      }
-    }
-    
+
     // Get current point balance for the child
     const balance = await getChildBalance(childId);
     
@@ -211,7 +206,9 @@ router.get('/balance/:childId', authenticate, async (req: AuthRequest, res, next
 router.post('/cleanup-orphaned', authenticate, requireRole('parent'), async (req: AuthRequest, res, next) => {
   try {
     console.log('[CLEANUP] Manual cleanup triggered by user:', req.user?.userId);
-    const deletedCount = await cleanupOrphanedConversions();
+    const house = await authorizeHouseAccess(req.user!);
+    if (!house.ok) return res.status(house.status).json({ error: house.error });
+    const deletedCount = await cleanupOrphanedConversions(house.houseId);
     
     res.json({
       success: true,

@@ -123,6 +123,7 @@ export interface ConvertBonusResponse {
 // Work Log types
 export interface WorkLog {
   id: number;
+  house_id: number;
   child_id: number;
   project_id: number;
   hours: number;
@@ -153,6 +154,7 @@ export type WorkLogStatus = 'pending' | 'approved' | 'declined';
 
 export interface Project {
   id: number;
+  house_id: number;
   name: string;
   description: string | null;
   start_date: string;

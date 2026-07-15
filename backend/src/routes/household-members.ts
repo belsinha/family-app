@@ -6,9 +6,11 @@ import {
   bootstrapEmptyChoresHousehold,
   ensureChoreTemplateEditorRole,
   resolveHouseholdMemberIdForChildUser,
+  requireChoresHouseholdAccess,
 } from '../services/choresAccess.js';
 
 const router = Router();
+router.use(authenticate, requireChoresHouseholdAccess);
 
 router.get('/', authenticate, async (req: AuthRequest, res, next) => {
   try {

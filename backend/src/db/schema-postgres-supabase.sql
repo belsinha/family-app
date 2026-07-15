@@ -69,6 +69,7 @@ CREATE TABLE IF NOT EXISTS bitcoin_conversions (
 -- Projects table
 CREATE TABLE IF NOT EXISTS projects (
   id BIGSERIAL PRIMARY KEY,
+  house_id BIGINT NOT NULL,
   name TEXT NOT NULL,
   description TEXT,
   start_date DATE NOT NULL,
@@ -76,12 +77,21 @@ CREATE TABLE IF NOT EXISTS projects (
   bonus_rate NUMERIC NOT NULL CHECK(bonus_rate >= 0),
   status TEXT NOT NULL CHECK(status IN ('active', 'inactive')) DEFAULT 'active',
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  FOREIGN KEY (house_id) REFERENCES houses(id) ON DELETE CASCADE
 );
+
+-- CREATE TABLE IF NOT EXISTS does not add columns to an older table.
+ALTER TABLE projects ADD COLUMN IF NOT EXISTS house_id BIGINT;
+
+-- Composite ownership keys used to make cross-house child/project pairings impossible.
+CREATE UNIQUE INDEX IF NOT EXISTS idx_children_id_house_id ON children(id, house_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_projects_id_house_id ON projects(id, house_id);
 
 -- Work logs table
 CREATE TABLE IF NOT EXISTS work_logs (
   id BIGSERIAL PRIMARY KEY,
+  house_id BIGINT NOT NULL,
   child_id BIGINT NOT NULL,
   project_id BIGINT NOT NULL,
   hours NUMERIC NOT NULL CHECK(hours > 0),
@@ -89,9 +99,61 @@ CREATE TABLE IF NOT EXISTS work_logs (
   work_date DATE NOT NULL DEFAULT CURRENT_DATE,
   status TEXT NOT NULL CHECK(status IN ('pending', 'approved', 'declined')) DEFAULT 'pending',
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-  FOREIGN KEY (child_id) REFERENCES children(id) ON DELETE CASCADE,
-  FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE RESTRICT
+  CONSTRAINT work_logs_house_id_fkey FOREIGN KEY (house_id) REFERENCES houses(id) ON DELETE CASCADE,
+  CONSTRAINT work_logs_child_house_fkey FOREIGN KEY (child_id, house_id) REFERENCES children(id, house_id) ON DELETE CASCADE,
+  CONSTRAINT work_logs_project_house_fkey FOREIGN KEY (project_id, house_id) REFERENCES projects(id, house_id) ON DELETE RESTRICT
 );
+
+-- Upgrade existing installations created before project/work-log tenant ownership existed.
+-- Rows are backfilled only when their house can be derived without guessing. Any ambiguous
+-- legacy project keeps NULL and is consequently invisible to all house-scoped backend queries.
+ALTER TABLE work_logs ADD COLUMN IF NOT EXISTS house_id BIGINT;
+
+UPDATE work_logs wl
+SET house_id = c.house_id
+FROM children c
+WHERE wl.child_id = c.id
+  AND wl.house_id IS NULL
+  AND c.house_id IS NOT NULL;
+
+UPDATE projects p
+SET house_id = derived.house_id
+FROM (
+  SELECT wl.project_id, MIN(wl.house_id) AS house_id
+  FROM work_logs wl
+  WHERE wl.house_id IS NOT NULL
+  GROUP BY wl.project_id
+  HAVING COUNT(DISTINCT wl.house_id) = 1
+) derived
+WHERE p.id = derived.project_id
+  AND p.house_id IS NULL;
+
+UPDATE projects
+SET house_id = (SELECT MIN(id) FROM houses)
+WHERE house_id IS NULL
+  AND (SELECT COUNT(*) FROM houses) = 1;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'projects_house_id_fkey') THEN
+    ALTER TABLE projects
+      ADD CONSTRAINT projects_house_id_fkey FOREIGN KEY (house_id) REFERENCES houses(id) ON DELETE CASCADE;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'work_logs_house_id_fkey') THEN
+    ALTER TABLE work_logs
+      ADD CONSTRAINT work_logs_house_id_fkey FOREIGN KEY (house_id) REFERENCES houses(id) ON DELETE CASCADE;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'work_logs_child_house_fkey') THEN
+    ALTER TABLE work_logs
+      ADD CONSTRAINT work_logs_child_house_fkey
+      FOREIGN KEY (child_id, house_id) REFERENCES children(id, house_id) ON DELETE CASCADE NOT VALID;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'work_logs_project_house_fkey') THEN
+    ALTER TABLE work_logs
+      ADD CONSTRAINT work_logs_project_house_fkey
+      FOREIGN KEY (project_id, house_id) REFERENCES projects(id, house_id) ON DELETE RESTRICT NOT VALID;
+  END IF;
+END $$;
 
 -- Create indexes for better performance
 CREATE INDEX IF NOT EXISTS idx_users_house_id ON users(house_id);
@@ -106,8 +168,10 @@ CREATE INDEX IF NOT EXISTS idx_bitcoin_conversions_child_id ON bitcoin_conversio
 CREATE INDEX IF NOT EXISTS idx_bitcoin_conversions_parent_id ON bitcoin_conversions(parent_id);
 CREATE INDEX IF NOT EXISTS idx_bitcoin_conversions_created_at ON bitcoin_conversions(created_at);
 CREATE INDEX IF NOT EXISTS idx_projects_status ON projects(status);
+CREATE INDEX IF NOT EXISTS idx_projects_house_id ON projects(house_id);
 CREATE INDEX IF NOT EXISTS idx_projects_start_date ON projects(start_date);
 CREATE INDEX IF NOT EXISTS idx_work_logs_child_id ON work_logs(child_id);
+CREATE INDEX IF NOT EXISTS idx_work_logs_house_id ON work_logs(house_id);
 CREATE INDEX IF NOT EXISTS idx_work_logs_project_id ON work_logs(project_id);
 CREATE INDEX IF NOT EXISTS idx_work_logs_status ON work_logs(status);
 CREATE INDEX IF NOT EXISTS idx_work_logs_work_date ON work_logs(work_date);
@@ -181,5 +245,27 @@ CREATE INDEX IF NOT EXISTS idx_child_credit_payouts_child_id ON child_credit_pay
 CREATE INDEX IF NOT EXISTS idx_child_credit_payouts_parent_id ON child_credit_payouts(parent_id);
 CREATE INDEX IF NOT EXISTS idx_child_credit_payouts_type ON child_credit_payouts(type);
 CREATE INDEX IF NOT EXISTS idx_child_credit_payouts_created_at ON child_credit_payouts(created_at);
+
+-- ── Row Level Security: deny-by-default ─────────────────────────────────────
+-- All application access goes through the backend, which authenticates with the
+-- SERVICE ROLE key (bypasses RLS). Enabling RLS with NO policies means the anon /
+-- authenticated PostgREST roles can read or write NOTHING, so a leaked anon key or a
+-- direct request to the project's REST endpoint exposes no data. Authorization
+-- (child-vs-parent, house containment) is enforced in backend/src route guards.
+--
+-- NOTE: this requires SUPABASE_SERVICE_ROLE_KEY to be set for the backend. Running the
+-- backend on the anon key only (the fallback in db/supabase.ts) will fail once RLS is on.
+ALTER TABLE houses ENABLE ROW LEVEL SECURITY;
+ALTER TABLE users ENABLE ROW LEVEL SECURITY;
+ALTER TABLE children ENABLE ROW LEVEL SECURITY;
+ALTER TABLE points ENABLE ROW LEVEL SECURITY;
+ALTER TABLE bitcoin_price_cache ENABLE ROW LEVEL SECURITY;
+ALTER TABLE bitcoin_conversions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE projects ENABLE ROW LEVEL SECURITY;
+ALTER TABLE work_logs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE challenges ENABLE ROW LEVEL SECURITY;
+ALTER TABLE challenge_progress ENABLE ROW LEVEL SECURITY;
+ALTER TABLE child_onchain_wallets ENABLE ROW LEVEL SECURITY;
+ALTER TABLE child_credit_payouts ENABLE ROW LEVEL SECURITY;
 
 

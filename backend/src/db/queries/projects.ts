@@ -2,6 +2,7 @@ import { getSupabaseClient } from '../supabase.js';
 import type { Project } from '../../types.js';
 
 export async function createProject(
+  houseId: number,
   name: string,
   description: string | null,
   startDate: string,
@@ -14,6 +15,7 @@ export async function createProject(
   const { data: project, error } = await supabase
     .from('projects')
     .insert({
+      house_id: houseId,
       name,
       description: description || null,
       start_date: startDate,
@@ -31,12 +33,13 @@ export async function createProject(
   return project as Project;
 }
 
-export async function getAllProjects(): Promise<Project[]> {
+export async function getAllProjects(houseId: number): Promise<Project[]> {
   const supabase = getSupabaseClient();
   
   const { data: projects, error } = await supabase
     .from('projects')
     .select('*')
+    .eq('house_id', houseId)
     .order('created_at', { ascending: false });
   
   if (error) {
@@ -46,13 +49,14 @@ export async function getAllProjects(): Promise<Project[]> {
   return (projects || []) as Project[];
 }
 
-export async function getActiveProjects(): Promise<Project[]> {
+export async function getActiveProjects(houseId: number): Promise<Project[]> {
   const supabase = getSupabaseClient();
   const today = new Date().toISOString().split('T')[0];
   
   const { data: projects, error } = await supabase
     .from('projects')
     .select('*')
+    .eq('house_id', houseId)
     .eq('status', 'active')
     .lte('start_date', today)
     .or(`end_date.is.null,end_date.gte.${today}`)
@@ -65,13 +69,14 @@ export async function getActiveProjects(): Promise<Project[]> {
   return (projects || []) as Project[];
 }
 
-export async function getProjectById(projectId: number): Promise<Project | null> {
+export async function getProjectById(projectId: number, houseId: number): Promise<Project | null> {
   const supabase = getSupabaseClient();
   
   const { data: project, error } = await supabase
     .from('projects')
     .select('*')
     .eq('id', projectId)
+    .eq('house_id', houseId)
     .single();
   
   if (error) {
@@ -86,6 +91,7 @@ export async function getProjectById(projectId: number): Promise<Project | null>
 
 export async function updateProject(
   projectId: number,
+  houseId: number,
   name: string,
   description: string | null,
   startDate: string,
@@ -107,6 +113,7 @@ export async function updateProject(
       updated_at: new Date().toISOString(),
     })
     .eq('id', projectId)
+    .eq('house_id', houseId)
     .select()
     .single();
   
@@ -117,7 +124,7 @@ export async function updateProject(
   return project as Project;
 }
 
-export async function deleteProject(projectId: number): Promise<boolean> {
+export async function deleteProject(projectId: number, houseId: number): Promise<boolean> {
   const supabase = getSupabaseClient();
   
   // Check if any work logs reference this project
@@ -125,6 +132,7 @@ export async function deleteProject(projectId: number): Promise<boolean> {
     .from('work_logs')
     .select('id')
     .eq('project_id', projectId)
+    .eq('house_id', houseId)
     .limit(1);
   
   if (checkError) {
@@ -136,7 +144,8 @@ export async function deleteProject(projectId: number): Promise<boolean> {
     const { error: updateError } = await supabase
       .from('projects')
       .update({ status: 'inactive', updated_at: new Date().toISOString() })
-      .eq('id', projectId);
+      .eq('id', projectId)
+      .eq('house_id', houseId);
     
     if (updateError) {
       throw new Error(`Failed to deactivate project: ${updateError.message}`);
@@ -148,7 +157,8 @@ export async function deleteProject(projectId: number): Promise<boolean> {
   const { error: deleteError } = await supabase
     .from('projects')
     .delete()
-    .eq('id', projectId);
+    .eq('id', projectId)
+    .eq('house_id', houseId);
   
   if (deleteError) {
     throw new Error(`Failed to delete project: ${deleteError.message}`);

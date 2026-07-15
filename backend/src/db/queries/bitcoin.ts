@@ -341,13 +341,14 @@ export async function getTotalSatoshisByChildId(childId: number): Promise<number
   return conversions.reduce((sum: number, conversion: any) => sum + (conversion.satoshis || 0), 0);
 }
 
-export async function deleteConversionByPointId(pointId: number): Promise<boolean> {
+export async function deleteConversionByPointId(pointId: number, childId: number): Promise<boolean> {
   const supabase = getSupabaseClient();
   
   const { error } = await supabase
     .from('bitcoin_conversions')
     .delete()
-    .eq('point_id', pointId);
+    .eq('point_id', pointId)
+    .eq('child_id', childId);
   
   if (error) {
     throw new Error(`Failed to delete conversion: ${error.message}`);

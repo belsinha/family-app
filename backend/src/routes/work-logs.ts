@@ -8,11 +8,12 @@ import {
   updateWorkLogStatus,
 } from '../db/queries/work-logs.js';
 import { authenticate, requireRole, type AuthRequest } from '../middleware/auth.js';
-import { getChildByUserId } from '../db/queries/children.js';
+import { authorizeChildAccess, listAccessibleChildren } from '../services/childAccess.js';
 import { getProjectById } from '../db/queries/projects.js';
 import { addPoints } from '../db/queries/points.js';
 import { getOrFetchPrice } from '../services/bitcoin.js';
 import { createConversion } from '../db/queries/bitcoin.js';
+import { authorizeHouseAccess } from '../services/houseAccess.js';
 
 const router = Router();
 
@@ -41,8 +42,17 @@ router.post('/', authenticate, async (req: AuthRequest, res, next) => {
           ? description.trim()
           : '';
     
-    // Verify project exists and is active
-    const project = await getProjectById(projectId);
+    // Resolve the child first; its house is the ownership key for both records.
+    const access = await authorizeChildAccess(req.user!, childId);
+    if (!access.ok) {
+      return res.status(access.status).json({ error: access.error });
+    }
+    if (access.child.house_id == null) {
+      return res.status(403).json({ error: 'Child is not assigned to a house' });
+    }
+
+    // Verify the project exists in the same house and is active.
+    const project = await getProjectById(projectId, access.child.house_id);
     if (!project) {
       return res.status(404).json({ error: 'Project not found' });
     }
@@ -61,15 +71,14 @@ router.post('/', authenticate, async (req: AuthRequest, res, next) => {
       return res.status(400).json({ error: 'Project has ended' });
     }
     
-    // If child user, verify they're creating for themselves
-    if (req.user?.role === 'child') {
-      const child = await getChildByUserId(req.user.userId);
-      if (!child || child.id !== childId) {
-        return res.status(403).json({ error: 'Access denied: You can only create work logs for yourself' });
-      }
-    }
-    
-    const workLog = await addWorkLog(childId, projectId, hours, descriptionText, workDate);
+    const workLog = await addWorkLog(
+      access.child.house_id,
+      childId,
+      projectId,
+      hours,
+      descriptionText,
+      workDate
+    );
     res.status(201).json(workLog);
   } catch (error) {
     console.error('Error creating work log:', error);
@@ -86,19 +95,13 @@ router.get('/child/:childId', authenticate, async (req: AuthRequest, res, next) 
   try {
     const childId = parseInt(req.params.childId, 10);
     
-    if (isNaN(childId)) {
-      return res.status(400).json({ error: 'Invalid child ID' });
+    // Owner/house guard: child sees only self, parent only own-house children, family none.
+    const access = await authorizeChildAccess(req.user!, childId);
+    if (!access.ok) {
+      return res.status(access.status).json({ error: access.error });
     }
-    
-    // If child user, verify they're accessing their own data
-    if (req.user?.role === 'child') {
-      const child = await getChildByUserId(req.user.userId);
-      if (!child || child.id !== childId) {
-        return res.status(403).json({ error: 'Access denied' });
-      }
-    }
-    
-    const workLogs = await getWorkLogsByChildId(childId);
+
+    const workLogs = await getWorkLogsByChildId(childId, access.child.house_id!);
     res.json(workLogs);
   } catch (error) {
     next(error);
@@ -132,7 +135,9 @@ router.put('/:workLogId', authenticate, requireRole('parent'), async (req: AuthR
           : '';
     
     // Verify work log exists and can be edited
-    const existingLog = await getWorkLogById(workLogId);
+    const house = await authorizeHouseAccess(req.user!);
+    if (!house.ok) return res.status(house.status).json({ error: house.error });
+    const existingLog = await getWorkLogById(workLogId, house.houseId);
     if (!existingLog) {
       return res.status(404).json({ error: 'Work log not found' });
     }
@@ -140,8 +145,20 @@ router.put('/:workLogId', authenticate, requireRole('parent'), async (req: AuthR
     if (existingLog.status !== 'pending') {
       return res.status(400).json({ error: 'Cannot edit work log that has been approved or declined' });
     }
-    
-    const updatedLog = await updateWorkLog(workLogId, hours, descriptionText, workDate);
+
+    // House guard: parents may only edit logs of children in their own house.
+    const access = await authorizeChildAccess(req.user!, existingLog.child_id);
+    if (!access.ok) {
+      return res.status(access.status).json({ error: access.error });
+    }
+
+    const updatedLog = await updateWorkLog(
+      workLogId,
+      house.houseId,
+      hours,
+      descriptionText,
+      workDate
+    );
     res.json(updatedLog);
   } catch (error) {
     next(error);
@@ -151,8 +168,12 @@ router.put('/:workLogId', authenticate, requireRole('parent'), async (req: AuthR
 // Get pending work logs (parents only)
 router.get('/pending', authenticate, requireRole('parent'), async (req: AuthRequest, res, next) => {
   try {
-    const pendingLogs = await getPendingWorkLogs();
-    res.json(pendingLogs);
+    // Only pending logs for children this parent may see (own house).
+    const house = await authorizeHouseAccess(req.user!);
+    if (!house.ok) return res.status(house.status).json({ error: house.error });
+    const pendingLogs = await getPendingWorkLogs(house.houseId);
+    const accessibleIds = new Set((await listAccessibleChildren(req.user!)).map((c) => c.id));
+    res.json(pendingLogs.filter((log) => accessibleIds.has(log.child_id)));
   } catch (error) {
     next(error);
   }
@@ -173,7 +194,9 @@ router.post('/:workLogId/approve', authenticate, requireRole('parent'), async (r
     }
     
     // Get the work log
-    const workLog = await getWorkLogById(workLogId);
+    const house = await authorizeHouseAccess(req.user!);
+    if (!house.ok) return res.status(house.status).json({ error: house.error });
+    const workLog = await getWorkLogById(workLogId, house.houseId);
     if (!workLog) {
       return res.status(404).json({ error: 'Work log not found' });
     }
@@ -181,10 +204,16 @@ router.post('/:workLogId/approve', authenticate, requireRole('parent'), async (r
     if (workLog.status !== 'pending') {
       return res.status(400).json({ error: `Work log is already ${workLog.status}` });
     }
-    
+
+    // House guard: parents may only approve/decline logs of children in their own house.
+    const access = await authorizeChildAccess(req.user!, workLog.child_id);
+    if (!access.ok) {
+      return res.status(access.status).json({ error: access.error });
+    }
+
     // Get project to calculate bonus
     if (!workLog.project) {
-      const project = await getProjectById(workLog.project_id);
+      const project = await getProjectById(workLog.project_id, access.child.house_id!);
       if (!project) {
         return res.status(404).json({ error: 'Project not found' });
       }
@@ -195,7 +224,7 @@ router.post('/:workLogId/approve', authenticate, requireRole('parent'), async (r
     const status = action === 'approve' ? 'approved' : 'declined';
     
     // Update status
-    const updatedLog = await updateWorkLogStatus(workLogId, status);
+    const updatedLog = await updateWorkLogStatus(workLogId, house.houseId, status);
     
     // If approved, calculate and award bonus
     if (action === 'approve') {
@@ -273,7 +302,7 @@ router.post('/:workLogId/approve', authenticate, requireRole('parent'), async (r
     }
     
     // Fetch the updated log with project info
-    const finalLog = await getWorkLogById(workLogId);
+    const finalLog = await getWorkLogById(workLogId, house.houseId);
     res.json(finalLog);
   } catch (error) {
     next(error);

@@ -103,6 +103,7 @@ export async function migrateBitcoinTables(): Promise<boolean> {
     sqlStatements.push(`
       CREATE INDEX IF NOT EXISTS idx_bitcoin_price_cache_fetched_at ON bitcoin_price_cache(fetched_at);
     `);
+    sqlStatements.push(`ALTER TABLE bitcoin_price_cache ENABLE ROW LEVEL SECURITY;`);
     migrated = true;
   }
 
@@ -135,6 +136,7 @@ export async function migrateBitcoinTables(): Promise<boolean> {
     sqlStatements.push(`
       CREATE INDEX IF NOT EXISTS idx_bitcoin_conversions_created_at ON bitcoin_conversions(created_at);
     `);
+    sqlStatements.push(`ALTER TABLE bitcoin_conversions ENABLE ROW LEVEL SECURITY;`);
     migrated = true;
   }
 
@@ -207,7 +209,7 @@ export async function migrateBitcoinTables(): Promise<boolean> {
  * Clean up orphaned Bitcoin conversions (those with NULL point_id)
  * These are from before we added point_id validation
  */
-export async function cleanupOrphanedConversions(): Promise<number> {
+export async function cleanupOrphanedConversions(houseId: number): Promise<number> {
   const supabase = getSupabaseClient();
   
   try {
@@ -233,7 +235,8 @@ export async function cleanupOrphanedConversions(): Promise<number> {
     // Find all conversions with NULL point_id
     const { data: orphaned, error: findError } = await supabase
       .from('bitcoin_conversions')
-      .select('id, child_id, created_at, satoshis, point_id')
+      .select('id, child_id, created_at, satoshis, point_id, child:children!inner(house_id)')
+      .eq('child.house_id', houseId)
       .is('point_id', null);
     
     if (findError) {

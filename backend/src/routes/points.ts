@@ -1,7 +1,7 @@
 import { Router } from 'express';
-import { addPoints, getPointsByChildId, getChildBalance, deletePoint, getMostRecentPoint, getPointsByChildIdLast7Days } from '../db/queries/points.js';
+import { addPoints, getPointsByChildId, getChildBalance, deletePoint, getMostRecentPoint, getPointById, getPointsByChildIdLast7Days } from '../db/queries/points.js';
 import { authenticate, requireRole, type AuthRequest } from '../middleware/auth.js';
-import { getChildByUserId } from '../db/queries/children.js';
+import { authorizeChildAccess } from '../services/childAccess.js';
 import { getOrFetchPrice } from '../services/bitcoin.js';
 import { createConversion, deleteConversionByPointId } from '../db/queries/bitcoin.js';
 
@@ -19,7 +19,13 @@ router.post('/', authenticate, requireRole('parent'), async (req: AuthRequest, r
     if (!childId || points === undefined || !type) {
       return res.status(400).json({ error: 'Missing required fields: childId, points, type' });
     }
-    
+
+    // Parents may only award/deduct points for children in their own house.
+    const access = await authorizeChildAccess(req.user!, childId);
+    if (!access.ok) {
+      return res.status(access.status).json({ error: access.error });
+    }
+
     // For anonymous points, don't require authentication (but still require parent role)
     const parentId = anonymous ? undefined : req.user?.userId;
     
@@ -107,15 +113,13 @@ router.post('/', authenticate, requireRole('parent'), async (req: AuthRequest, r
 router.get('/child/:childId', authenticate, async (req: AuthRequest, res, next) => {
   try {
     const childId = parseInt(req.params.childId, 10);
-    
-    // If child user, verify they're accessing their own data
-    if (req.user?.role === 'child') {
-      const child = await getChildByUserId(req.user.userId);
-      if (!child || child.id !== childId) {
-        return res.status(403).json({ error: 'Access denied' });
-      }
+
+    // Owner/house guard: child sees only self, parent only own-house children, family none.
+    const access = await authorizeChildAccess(req.user!, childId);
+    if (!access.ok) {
+      return res.status(access.status).json({ error: access.error });
     }
-    
+
     const points = await getPointsByChildId(childId);
     res.json(points);
   } catch (error) {
@@ -127,15 +131,13 @@ router.get('/child/:childId', authenticate, async (req: AuthRequest, res, next) 
 router.get('/child/:childId/balance', authenticate, async (req: AuthRequest, res, next) => {
   try {
     const childId = parseInt(req.params.childId, 10);
-    
-    // If child user, verify they're accessing their own data
-    if (req.user?.role === 'child') {
-      const child = await getChildByUserId(req.user.userId);
-      if (!child || child.id !== childId) {
-        return res.status(403).json({ error: 'Access denied' });
-      }
+
+    // Owner/house guard: child sees only self, parent only own-house children, family none.
+    const access = await authorizeChildAccess(req.user!, childId);
+    if (!access.ok) {
+      return res.status(access.status).json({ error: access.error });
     }
-    
+
     const { bonus, demerit, balance } = await getChildBalance(childId);
     res.json({ childId, bonus, demerit, balance });
   } catch (error) {
@@ -147,15 +149,13 @@ router.get('/child/:childId/balance', authenticate, async (req: AuthRequest, res
 router.get('/child/:childId/most-recent', authenticate, async (req: AuthRequest, res, next) => {
   try {
     const childId = parseInt(req.params.childId, 10);
-    
-    // If child user, verify they're accessing their own data
-    if (req.user?.role === 'child') {
-      const child = await getChildByUserId(req.user.userId);
-      if (!child || child.id !== childId) {
-        return res.status(403).json({ error: 'Access denied' });
-      }
+
+    // Owner/house guard: child sees only self, parent only own-house children, family none.
+    const access = await authorizeChildAccess(req.user!, childId);
+    if (!access.ok) {
+      return res.status(access.status).json({ error: access.error });
     }
-    
+
     const point = await getMostRecentPoint(childId);
     if (!point) {
       return res.status(404).json({ error: 'No points found' });
@@ -170,15 +170,13 @@ router.get('/child/:childId/most-recent', authenticate, async (req: AuthRequest,
 router.get('/child/:childId/last-7-days', authenticate, async (req: AuthRequest, res, next) => {
   try {
     const childId = parseInt(req.params.childId, 10);
-    
-    // If child user, verify they're accessing their own data
-    if (req.user?.role === 'child') {
-      const child = await getChildByUserId(req.user.userId);
-      if (!child || child.id !== childId) {
-        return res.status(403).json({ error: 'Access denied' });
-      }
+
+    // Owner/house guard: child sees only self, parent only own-house children, family none.
+    const access = await authorizeChildAccess(req.user!, childId);
+    if (!access.ok) {
+      return res.status(access.status).json({ error: access.error });
     }
-    
+
     const points = await getPointsByChildIdLast7Days(childId);
     res.json(points);
   } catch (error) {
@@ -194,18 +192,28 @@ router.delete('/:pointId', authenticate, requireRole('parent'), async (req: Auth
     if (!pointId || isNaN(pointId)) {
       return res.status(400).json({ error: 'Invalid point ID' });
     }
-    
+
+    // House guard: a parent may only delete points belonging to children of their own house.
+    const point = await getPointById(pointId);
+    if (!point) {
+      return res.status(404).json({ error: 'Point not found' });
+    }
+    const access = await authorizeChildAccess(req.user!, point.child_id);
+    if (!access.ok) {
+      return res.status(access.status).json({ error: access.error });
+    }
+
     // Delete the corresponding Bitcoin conversion first (if it exists)
     // This will automatically remove the Bitcoin balance change
     try {
-      await deleteConversionByPointId(pointId);
+      await deleteConversionByPointId(pointId, access.child.id);
     } catch (error) {
       // Log but don't fail - conversion might not exist (e.g., if price was unavailable when point was added)
       console.warn('Failed to delete Bitcoin conversion for point:', error);
     }
     
     // Now delete the point
-    const deleted = await deletePoint(pointId);
+    const deleted = await deletePoint(pointId, access.child.id);
     
     if (!deleted) {
       return res.status(404).json({ error: 'Point not found' });

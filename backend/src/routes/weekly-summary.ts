@@ -5,9 +5,11 @@ import { authenticate, type AuthRequest } from '../middleware/auth.js';
 import {
   hasFullChoresAccess,
   resolveHouseholdMemberIdForChildUser,
+  requireChoresHouseholdAccess,
 } from '../services/choresAccess.js';
 
 const router = Router();
+router.use(authenticate, requireChoresHouseholdAccess);
 
 const POOL_MEMBER_ID = -1;
 const poolMember = { id: POOL_MEMBER_ID, name: 'Anyone (household)', canEditChores: false };

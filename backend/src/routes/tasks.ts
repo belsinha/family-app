@@ -5,9 +5,11 @@ import { authenticate, requireRole, type AuthRequest } from '../middleware/auth.
 import {
   hasFullChoresAccess,
   resolveHouseholdMemberIdForChildUser,
+  requireChoresHouseholdAccess,
 } from '../services/choresAccess.js';
 
 const router = Router();
+router.use(authenticate, requireChoresHouseholdAccess);
 
 const instanceInclude = {
   template: {
