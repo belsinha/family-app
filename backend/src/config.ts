@@ -1,4 +1,5 @@
 import dotenv from 'dotenv';
+import { loadBitcoinWalletConfig } from './bitcoinWalletConfig.js';
 
 dotenv.config();
 
@@ -32,6 +33,14 @@ const keepAliveIntervalParsed = parseInt(process.env.KEEP_ALIVE_INTERVAL_MS || '
 const keepAliveIntervalMs =
   Number.isFinite(keepAliveIntervalParsed) && keepAliveIntervalParsed > 0 ? keepAliveIntervalParsed : 600_000;
 
+let bitcoinWallet: ReturnType<typeof loadBitcoinWalletConfig>;
+try {
+  bitcoinWallet = loadBitcoinWalletConfig(process.env);
+} catch (error) {
+  console.error(error instanceof Error ? error.message : 'Invalid Bitcoin wallet configuration.');
+  process.exit(1);
+}
+
 export const config = {
   port: parseInt(process.env.PORT || '3001', 10),
   nodeEnv: process.env.NODE_ENV || 'development',
@@ -44,8 +53,7 @@ export const config = {
   },
   bitcoin: {
     network: (process.env.BITCOIN_NETWORK || 'testnet') as 'mainnet' | 'testnet',
-    mnemonic: process.env.BITCOIN_MNEMONIC || undefined,
-    xprv: process.env.BITCOIN_XPRV || undefined,
+    ...bitcoinWallet,
     esploraBaseUrl: normalizeEsploraBaseUrl(
       process.env.ESPLORA_BASE_URL ||
         (process.env.BITCOIN_NETWORK === 'mainnet'

@@ -203,6 +203,8 @@ Chores **migrations** run automatically when the Prisma client module loads (`np
 
 **Render frontend URL:** The blueprint builds the Vite app under `frontend/`, then runs `npm run build` in `backend/`. The backend build copies `frontend/dist` into `backend/dist/static-frontend/` (same tree as `server.js`) and serves it from there, so paths like `/login` and `/chores` work without CDN rewrite rules. Open the **web** service URL from Render, not a separate Static Site, unless that site has a rewrite `/*` → `/index.html`. When `RENDER_EXTERNAL_URL` is set at build time, the blueprint exports `VITE_API_URL` so the client targets the correct API origin.
 
+**Bitcoin wallet:** Cloud deployments are watch-only or disabled by default. Configure `BITCOIN_XPUB` for receive addresses and balances without a signing key. Server-side signing requires an explicit opt-in and a runtime-managed secret; follow [docs/bitcoin-wallet-operations.md](docs/bitcoin-wallet-operations.md) before enabling it.
+
 ### Frontend
 Create a `.env` file in the `frontend/` directory (optional):
 ```

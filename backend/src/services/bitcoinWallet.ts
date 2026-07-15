@@ -3,25 +3,34 @@ import BIP32Factory from 'bip32';
 import * as bip39 from 'bip39';
 import * as ecc from '@bitcoinerlab/secp256k1';
 import { config } from '../config.js';
+import {
+  accountNodeFromXpub,
+  branchAddress,
+  coinTypeFor,
+  networkMap,
+} from './bitcoinWalletDerivation.js';
 
 const bip32 = BIP32Factory(ecc);
-
-bitcoin.initEccLib(ecc);
-
-const networkMap = {
-  mainnet: bitcoin.networks.bitcoin,
-  testnet: bitcoin.networks.testnet,
-} as const;
 
 function getNetwork(): bitcoin.Network {
   return networkMap[config.bitcoin.network];
 }
 
 /**
- * Derive the BIP32 root from either BITCOIN_XPRV or BITCOIN_MNEMONIC.
- * Throws if neither is configured.
+ * Whether this process may sign transactions. Merely providing a mnemonic or xprv is never enough.
  */
+export function isSigningEnabled(): boolean {
+  return config.bitcoin.hotWalletEnabled;
+}
+
 function getRootKey(): ReturnType<typeof bip32.fromBase58> {
+  if (!config.bitcoin.hotWalletEnabled) {
+    throw new Error(
+      'Server-side Bitcoin signing is disabled. This deployment is watch-only; see ' +
+        'docs/bitcoin-wallet-operations.md before enabling a managed signing secret.',
+    );
+  }
+
   const network = getNetwork();
 
   if (config.bitcoin.xprv) {
@@ -34,7 +43,20 @@ function getRootKey(): ReturnType<typeof bip32.fromBase58> {
   }
 
   throw new Error(
-    'Bitcoin wallet not configured. Set BITCOIN_MNEMONIC or BITCOIN_XPRV in environment.'
+    'Bitcoin signing was enabled without a managed BITCOIN_MNEMONIC or BITCOIN_XPRV secret.',
+  );
+}
+
+/** Account-level public node used for receive and change address derivation. */
+function getAccountPublicNode() {
+  if (config.bitcoin.xpub) {
+    return accountNodeFromXpub(config.bitcoin.xpub, config.bitcoin.network);
+  }
+  if (config.bitcoin.hotWalletEnabled) {
+    return getRootKey().derivePath(`m/84'/${coinTypeFor(config.bitcoin.network)}'/0'`).neutered();
+  }
+  throw new Error(
+    'Bitcoin wallet is disabled. Configure BITCOIN_XPUB for watch-only operation; do not place a mnemonic or xprv on a default cloud deployment.',
   );
 }
 
@@ -43,20 +65,7 @@ function getRootKey(): ReturnType<typeof bip32.fromBase58> {
  * Returns a native SegWit (bech32) address.
  */
 export function deriveChildAddress(index: number): string {
-  const network = getNetwork();
-  const root = getRootKey();
-  const coinType = config.bitcoin.network === 'mainnet' ? 0 : 1;
-  const child = root.derivePath(`m/84'/${coinType}'/0'/0/${index}`);
-  const { address } = bitcoin.payments.p2wpkh({
-    pubkey: Buffer.from(child.publicKey),
-    network,
-  });
-
-  if (!address) {
-    throw new Error(`Failed to derive address for index ${index}`);
-  }
-
-  return address;
+  return branchAddress(getAccountPublicNode(), config.bitcoin.network, 0, index);
 }
 
 /**
@@ -73,7 +82,7 @@ export function buildAndSignTx(
 ): { hex: string; txid: string; fee: number } {
   const network = getNetwork();
   const root = getRootKey();
-  const coinType = config.bitcoin.network === 'mainnet' ? 0 : 1;
+  const coinType = coinTypeFor(config.bitcoin.network);
 
   // House hot-wallet key: change path index 0
   const hotWalletNode = root.derivePath(`m/84'/${coinType}'/0'/1/0`);
@@ -81,6 +90,12 @@ export function buildAndSignTx(
     pubkey: Buffer.from(hotWalletNode.publicKey),
     network,
   });
+
+  if (hotWalletPayment.address !== getHotWalletAddress()) {
+    throw new Error(
+      'BITCOIN_XPUB does not match the configured signing key. Export the public key from the same wallet or disable signing.',
+    );
+  }
 
   const psbt = new bitcoin.Psbt({ network });
 
@@ -130,16 +145,7 @@ export function buildAndSignTx(
  * Return the house hot-wallet address (change path index 0) for display / funding.
  */
 export function getHotWalletAddress(): string {
-  const network = getNetwork();
-  const root = getRootKey();
-  const coinType = config.bitcoin.network === 'mainnet' ? 0 : 1;
-  const node = root.derivePath(`m/84'/${coinType}'/0'/1/0`);
-  const { address } = bitcoin.payments.p2wpkh({
-    pubkey: Buffer.from(node.publicKey),
-    network,
-  });
-  if (!address) throw new Error('Failed to derive hot wallet address');
-  return address;
+  return branchAddress(getAccountPublicNode(), config.bitcoin.network, 1, 0);
 }
 
 export function getConfiguredNetwork(): 'mainnet' | 'testnet' {

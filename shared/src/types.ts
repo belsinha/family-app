@@ -153,6 +153,7 @@ export interface OnchainBalanceResponse {
   network: BitcoinNetwork;
   confirmedSat: number;
   unconfirmedSat: number;
+  signingEnabled: boolean;
 }
 
 export interface DepositUriResponse {
