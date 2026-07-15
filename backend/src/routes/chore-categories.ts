@@ -5,9 +5,11 @@ import {
   bootstrapEmptyChoresHousehold,
   hasFullChoresAccess,
   requireChoreEditorOrParent,
+  requireChoresHouseholdAccess,
 } from '../services/choresAccess.js';
 
 const router = Router();
+router.use(authenticate, requireChoresHouseholdAccess);
 
 const requireCanEditChores = requireChoreEditorOrParent({
   deniedMessage: 'This user cannot edit categories.',

@@ -10,13 +10,16 @@ import {
 import { getAllProjectsStatistics } from '../db/queries/project-stats.js';
 import { authenticate, requireRole, type AuthRequest } from '../middleware/auth.js';
 import type { CreateProjectRequest, UpdateProjectRequest } from '../types.js';
+import { authorizeHouseAccess } from '../services/houseAccess.js';
 
 const router = Router();
 
 // Get all projects (parents only)
 router.get('/', authenticate, requireRole('parent'), async (req: AuthRequest, res, next) => {
   try {
-    const projects = await getAllProjects();
+    const house = await authorizeHouseAccess(req.user!);
+    if (!house.ok) return res.status(house.status).json({ error: house.error });
+    const projects = await getAllProjects(house.houseId);
     res.json(projects);
   } catch (error) {
     next(error);
@@ -26,7 +29,9 @@ router.get('/', authenticate, requireRole('parent'), async (req: AuthRequest, re
 // Get project statistics with hours per child (parents only)
 router.get('/statistics', authenticate, requireRole('parent'), async (req: AuthRequest, res, next) => {
   try {
-    const statistics = await getAllProjectsStatistics();
+    const house = await authorizeHouseAccess(req.user!);
+    if (!house.ok) return res.status(house.status).json({ error: house.error });
+    const statistics = await getAllProjectsStatistics(house.houseId);
     res.json(statistics);
   } catch (error) {
     next(error);
@@ -36,7 +41,9 @@ router.get('/statistics', authenticate, requireRole('parent'), async (req: AuthR
 // Get active projects (children can see these)
 router.get('/active', authenticate, async (req: AuthRequest, res, next) => {
   try {
-    const projects = await getActiveProjects();
+    const house = await authorizeHouseAccess(req.user!);
+    if (!house.ok) return res.status(house.status).json({ error: house.error });
+    const projects = await getActiveProjects(house.houseId);
     res.json(projects);
   } catch (error) {
     next(error);
@@ -52,7 +59,9 @@ router.get('/:projectId', authenticate, requireRole('parent'), async (req: AuthR
       return res.status(400).json({ error: 'Invalid project ID' });
     }
     
-    const project = await getProjectById(projectId);
+    const house = await authorizeHouseAccess(req.user!);
+    if (!house.ok) return res.status(house.status).json({ error: house.error });
+    const project = await getProjectById(projectId, house.houseId);
     if (!project) {
       return res.status(404).json({ error: 'Project not found' });
     }
@@ -94,7 +103,11 @@ router.post('/', authenticate, requireRole('parent'), async (req: AuthRequest, r
       }
     }
     
+    const house = await authorizeHouseAccess(req.user!);
+    if (!house.ok) return res.status(house.status).json({ error: house.error });
+
     const project = await createProject(
+      house.houseId,
       name.trim(),
       description?.trim() || null,
       startDate,
@@ -146,13 +159,16 @@ router.put('/:projectId', authenticate, requireRole('parent'), async (req: AuthR
     }
     
     // Verify project exists
-    const existingProject = await getProjectById(projectId);
+    const house = await authorizeHouseAccess(req.user!);
+    if (!house.ok) return res.status(house.status).json({ error: house.error });
+    const existingProject = await getProjectById(projectId, house.houseId);
     if (!existingProject) {
       return res.status(404).json({ error: 'Project not found' });
     }
     
     const project = await updateProject(
       projectId,
+      house.houseId,
       name.trim(),
       description?.trim() || null,
       startDate,
@@ -177,12 +193,14 @@ router.delete('/:projectId', authenticate, requireRole('parent'), async (req: Au
     }
     
     // Verify project exists
-    const existingProject = await getProjectById(projectId);
+    const house = await authorizeHouseAccess(req.user!);
+    if (!house.ok) return res.status(house.status).json({ error: house.error });
+    const existingProject = await getProjectById(projectId, house.houseId);
     if (!existingProject) {
       return res.status(404).json({ error: 'Project not found' });
     }
     
-    const deleted = await deleteProject(projectId);
+    const deleted = await deleteProject(projectId, house.houseId);
     
     if (deleted) {
       res.json({ message: 'Project deleted successfully' });

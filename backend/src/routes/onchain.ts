@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { authenticate, requireRole, type AuthRequest } from '../middleware/auth.js';
-import { getChildByUserId } from '../db/queries/children.js';
+import { authorizeChildAccess } from '../services/childAccess.js';
 import { getOrCreateWalletForChild, updateSyncTimestamp } from '../db/queries/onchainWallets.js';
 import {
   createPayout,
@@ -39,21 +39,16 @@ function ensureWallet(childId: number) {
   });
 }
 
-// ─── Access guard: parent sees any child; child sees only self ───────────
+// ─── Access guard: parent sees own-house children; child sees only self ───
 async function resolveAndAuthorizeChildId(
   req: AuthRequest,
   childIdParam: string | number,
 ): Promise<{ childId: number } | { error: string; status: number }> {
-  const childId = typeof childIdParam === 'string' ? parseInt(childIdParam, 10) : childIdParam;
-  if (isNaN(childId)) return { error: 'Invalid child ID', status: 400 };
-
-  if (req.user?.role === 'child') {
-    const child = await getChildByUserId(req.user.userId);
-    if (!child || child.id !== childId) {
-      return { error: 'Access denied', status: 403 };
-    }
+  const access = await authorizeChildAccess(req.user!, childIdParam);
+  if (!access.ok) {
+    return { error: access.error, status: access.status };
   }
-  return { childId };
+  return { childId: access.child.id };
 }
 
 /**
@@ -121,13 +116,6 @@ router.post(
   requireRole('parent'),
   async (req: AuthRequest, res, next) => {
     try {
-      if (!isSigningEnabled()) {
-        return res.status(503).json({
-          error:
-            'On-chain settlement is disabled because this server is watch-only. Use a manual payout, or follow docs/bitcoin-wallet-operations.md before enabling managed server-side signing.',
-        });
-      }
-
       const { childId, satoshis }: SettleCreditsRequest = req.body;
 
       if (!childId || !satoshis || satoshis <= 0) {
@@ -135,6 +123,18 @@ router.post(
       }
       if (satoshis < DUST_LIMIT) {
         return res.status(400).json({ error: `Amount below dust limit (${DUST_LIMIT} sat)` });
+      }
+
+      const access = await authorizeChildAccess(req.user!, childId);
+      if (!access.ok) {
+        return res.status(access.status).json({ error: access.error });
+      }
+
+      if (!isSigningEnabled()) {
+        return res.status(503).json({
+          error:
+            'On-chain settlement is disabled because this server is watch-only. Use a manual payout, or follow docs/bitcoin-wallet-operations.md before enabling managed server-side signing.',
+        });
       }
 
       // Check available notional balance
@@ -196,6 +196,11 @@ router.post(
 
       if (!childId || !satoshis || satoshis <= 0) {
         return res.status(400).json({ error: 'childId and positive satoshis required' });
+      }
+
+      const access = await authorizeChildAccess(req.user!, childId);
+      if (!access.ok) {
+        return res.status(access.status).json({ error: access.error });
       }
 
       // Validate against notional balance

@@ -99,21 +99,12 @@ async function migrateWorkLogsTable(): Promise<boolean> {
     return false;
   }
   
-  // Create a default project if none exists (needed for the foreign key)
-  sqlStatements.push(`
-    INSERT INTO projects (name, description, start_date, bonus_rate, status)
-    SELECT 
-      'Default Project',
-      'Default project for new work logs',
-      CURRENT_DATE,
-      1.0,
-      'active'
-    WHERE NOT EXISTS (SELECT 1 FROM projects LIMIT 1);
-  `);
-  
+  sqlStatements.push(`CREATE UNIQUE INDEX IF NOT EXISTS idx_children_id_house_id ON children(id, house_id);`);
+  sqlStatements.push(`CREATE UNIQUE INDEX IF NOT EXISTS idx_projects_id_house_id ON projects(id, house_id);`);
   sqlStatements.push(`
     CREATE TABLE IF NOT EXISTS work_logs (
       id BIGSERIAL PRIMARY KEY,
+      house_id BIGINT NOT NULL,
       child_id BIGINT NOT NULL,
       project_id BIGINT NOT NULL,
       hours NUMERIC NOT NULL CHECK(hours > 0),
@@ -121,8 +112,9 @@ async function migrateWorkLogsTable(): Promise<boolean> {
       work_date DATE NOT NULL DEFAULT CURRENT_DATE,
       status TEXT NOT NULL CHECK(status IN ('pending', 'approved', 'declined')) DEFAULT 'pending',
       created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-      FOREIGN KEY (child_id) REFERENCES children(id) ON DELETE CASCADE,
-      FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE RESTRICT
+      FOREIGN KEY (house_id) REFERENCES houses(id) ON DELETE CASCADE,
+      FOREIGN KEY (child_id, house_id) REFERENCES children(id, house_id) ON DELETE CASCADE,
+      FOREIGN KEY (project_id, house_id) REFERENCES projects(id, house_id) ON DELETE RESTRICT
     );
   `);
   sqlStatements.push(`
@@ -140,6 +132,8 @@ async function migrateWorkLogsTable(): Promise<boolean> {
   sqlStatements.push(`
     CREATE INDEX IF NOT EXISTS idx_work_logs_created_at ON work_logs(created_at);
   `);
+  sqlStatements.push(`CREATE INDEX IF NOT EXISTS idx_work_logs_house_id ON work_logs(house_id);`);
+  sqlStatements.push(`ALTER TABLE work_logs ENABLE ROW LEVEL SECURITY;`);
 
   // Execute SQL if we have statements to run
   if (sqlStatements.length > 0) {
@@ -243,7 +237,9 @@ export async function initDatabase() {
     // This handles conversions created before we added point_id validation
     // Run this separately so it always runs, even if migration failed
     try {
-      await cleanupOrphanedConversions();
+      for (const house of houses ?? []) {
+        await cleanupOrphanedConversions(Number(house.id));
+      }
     } catch (error) {
       console.warn('Orphaned conversion cleanup failed (non-critical):', error);
       if (error instanceof Error) {

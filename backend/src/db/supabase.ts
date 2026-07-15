@@ -8,7 +8,16 @@ export function getSupabaseClient(): SupabaseClient {
     // Use service role key if available for server-side operations
     // Otherwise fall back to anon key
     const apiKey = config.supabase.serviceRoleKey || config.supabase.anonKey;
-    
+
+    if (!config.supabase.serviceRoleKey) {
+      // With RLS enabled (deny-by-default, see schema-postgres-supabase.sql) the anon key
+      // cannot read or write any table, so the backend needs the service-role key.
+      console.warn(
+        'SUPABASE_SERVICE_ROLE_KEY not set — falling back to the anon key. ' +
+          'With row level security enabled the backend cannot access any data this way.'
+      );
+    }
+
     supabase = createClient(config.supabase.url, apiKey, {
       auth: {
         autoRefreshToken: false,

@@ -8,9 +8,11 @@ import {
 import {
   hasFullChoresAccess,
   resolveHouseholdMemberIdForChildUser,
+  requireChoresHouseholdAccess,
 } from '../services/choresAccess.js';
 
 const router = Router();
+router.use(authenticate, requireChoresHouseholdAccess);
 
 router.get('/monthly/:yearMonth/preview', authenticate, async (req: AuthRequest, res, next) => {
   try {

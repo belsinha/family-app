@@ -78,6 +78,7 @@ export async function migrateProjectsTable(): Promise<boolean> {
   sqlStatements.push(`
     CREATE TABLE IF NOT EXISTS projects (
       id BIGSERIAL PRIMARY KEY,
+      house_id BIGINT NOT NULL,
       name TEXT NOT NULL,
       description TEXT,
       start_date DATE NOT NULL,
@@ -85,7 +86,8 @@ export async function migrateProjectsTable(): Promise<boolean> {
       bonus_rate NUMERIC NOT NULL CHECK(bonus_rate >= 0),
       status TEXT NOT NULL CHECK(status IN ('active', 'inactive')) DEFAULT 'active',
       created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-      updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+      updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+      FOREIGN KEY (house_id) REFERENCES houses(id) ON DELETE CASCADE
     );
   `);
   sqlStatements.push(`
@@ -94,6 +96,8 @@ export async function migrateProjectsTable(): Promise<boolean> {
   sqlStatements.push(`
     CREATE INDEX IF NOT EXISTS idx_projects_start_date ON projects(start_date);
   `);
+  sqlStatements.push(`CREATE INDEX IF NOT EXISTS idx_projects_house_id ON projects(house_id);`);
+  sqlStatements.push(`ALTER TABLE projects ENABLE ROW LEVEL SECURITY;`);
 
   // Execute SQL if we have statements to run
   if (sqlStatements.length > 0) {

@@ -16,7 +16,7 @@ export interface ProjectStatistics {
 /**
  * Get hours worked by each child for a specific project
  */
-export async function getProjectChildHours(projectId: number): Promise<ProjectChildHours[]> {
+export async function getProjectChildHours(projectId: number, houseId: number): Promise<ProjectChildHours[]> {
   const supabase = getSupabaseClient();
   
   const { data, error } = await supabase
@@ -25,9 +25,12 @@ export async function getProjectChildHours(projectId: number): Promise<ProjectCh
       project_id,
       child_id,
       hours,
-      child:children(id, name)
+      child:children!inner(id, name, house_id),
+      project:projects!inner(house_id)
     `)
     .eq('project_id', projectId)
+    .eq('child.house_id', houseId)
+    .eq('project.house_id', houseId)
     .eq('status', 'approved'); // Only count approved work logs
   
   if (error) {
@@ -60,7 +63,7 @@ export async function getProjectChildHours(projectId: number): Promise<ProjectCh
 /**
  * Get statistics for all projects with hours per child
  */
-export async function getAllProjectsStatistics(): Promise<{ [projectId: number]: ProjectStatistics }> {
+export async function getAllProjectsStatistics(houseId: number): Promise<{ [projectId: number]: ProjectStatistics }> {
   const supabase = getSupabaseClient();
   
   const { data, error } = await supabase
@@ -69,8 +72,11 @@ export async function getAllProjectsStatistics(): Promise<{ [projectId: number]:
       project_id,
       child_id,
       hours,
-      child:children(id, name)
+      child:children!inner(id, name, house_id),
+      project:projects!inner(house_id)
     `)
+    .eq('child.house_id', houseId)
+    .eq('project.house_id', houseId)
     .eq('status', 'approved'); // Only count approved work logs
   
   if (error) {

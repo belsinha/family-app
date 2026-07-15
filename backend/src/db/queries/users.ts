@@ -14,6 +14,20 @@ export async function getAllUsers(): Promise<User[]> {
   return (data || []) as User[];
 }
 
+export async function getUsersByHouseId(houseId: number): Promise<User[]> {
+  const supabase = getSupabaseClient();
+  const { data, error } = await supabase
+    .from('users')
+    .select('id, name, role, house_id')
+    .eq('house_id', houseId);
+
+  if (error) {
+    throw new Error(`Failed to fetch users by house: ${error.message}`);
+  }
+
+  return (data || []) as User[];
+}
+
 export async function getUserById(id: number): Promise<User | null> {
   const supabase = getSupabaseClient();
   const { data, error } = await supabase

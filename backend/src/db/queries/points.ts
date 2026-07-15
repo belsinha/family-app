@@ -197,7 +197,25 @@ export async function getPointsByChildIdLast7Days(childId: number): Promise<Poin
   })) as Point[];
 }
 
-export async function deletePoint(pointId: number): Promise<boolean> {
+export async function getPointById(pointId: number): Promise<Point | null> {
+  const supabase = getSupabaseClient();
+  const { data, error } = await supabase
+    .from('points')
+    .select('*')
+    .eq('id', pointId)
+    .single();
+
+  if (error) {
+    if (error.code === 'PGRST116') {
+      return null; // Not found
+    }
+    throw new Error(`Failed to fetch point: ${error.message}`);
+  }
+
+  return data as Point | null;
+}
+
+export async function deletePoint(pointId: number, childId: number): Promise<boolean> {
   const supabase = getSupabaseClient();
   
   // Check if the point exists
@@ -205,6 +223,7 @@ export async function deletePoint(pointId: number): Promise<boolean> {
     .from('points')
     .select('id')
     .eq('id', pointId)
+    .eq('child_id', childId)
     .single();
   
   if (checkError || !existingPoint) {
@@ -215,7 +234,8 @@ export async function deletePoint(pointId: number): Promise<boolean> {
   const { error: deleteError } = await supabase
     .from('points')
     .delete()
-    .eq('id', pointId);
+    .eq('id', pointId)
+    .eq('child_id', childId);
   
   if (deleteError) {
     throw new Error(`Failed to delete point: ${deleteError.message}`);

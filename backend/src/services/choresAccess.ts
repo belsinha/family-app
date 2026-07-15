@@ -4,6 +4,8 @@ import { prisma } from '../db/prisma.js';
 import { getChildByUserId } from '../db/queries/children.js';
 import type { Role } from '../types.js';
 import type { AuthRequest } from '../middleware/auth.js';
+import { config } from '../config.js';
+import { authorizeHouseAccess } from './houseAccess.js';
 
 /** Only parents see the full household; `child` and `family` use the self-only chores scope. */
 export function hasFullChoresAccess(role: Role): boolean {
@@ -38,6 +40,7 @@ export async function ensureChoreTemplateEditorRole(opts?: {
 /** Default household rows when the chores DB was migrated but never seeded (e.g. new Render disk). */
 const DEFAULT_CHORES_MEMBERS: { name: string; canEditChores: boolean }[] = [
   { name: 'Celiane', canEditChores: true },
+  { name: 'Rommel', canEditChores: true },
   { name: 'Isabel', canEditChores: false },
   { name: 'Nicholas', canEditChores: false },
   { name: 'Laura', canEditChores: false },
@@ -62,8 +65,10 @@ export async function bootstrapEmptyChoresHousehold(): Promise<void> {
 
 /**
  * Template/category writes require `X-Editor-User-Id` = a household member id.
- * Members with `canEditChores` always pass. **Parents** (full chores access) also pass with any
- * valid member id so the UI is not blocked when flags were never set on this database file.
+ * **Parents** (full chores access) pass with any valid member id so the UI is not blocked when
+ * editor flags were never set on this database file. Non-parents pass only when the member their
+ * JWT maps to has `canEditChores` — the header alone is client-controlled and never grants
+ * anything, so a child cannot escalate by sending another member's id.
  */
 export function requireChoreEditorOrParent(opts?: { deniedMessage: string }) {
   const deniedMessage =
@@ -92,11 +97,19 @@ export function requireChoreEditorOrParent(opts?: { deniedMessage: string }) {
       res.status(403).json({ error: 'Invalid X-Editor-User-Id' });
       return;
     }
-    if (member.canEditChores || hasFullChoresAccess(req.user.role)) {
+    if (hasFullChoresAccess(req.user.role)) {
       next();
       return;
     }
-    res.status(403).json({ error: deniedMessage });
+    const ownMemberId = await resolveHouseholdMemberIdForChildUser(
+      req.user.userId,
+      req.user.name
+    );
+    if (ownMemberId == null || ownMemberId !== id || !member.canEditChores) {
+      res.status(403).json({ error: deniedMessage });
+      return;
+    }
+    next();
   };
 }
 
@@ -123,4 +136,41 @@ export async function resolveHouseholdMemberIdForChildUser(
     if (m) return m.id;
   }
   return null;
+}
+
+/**
+ * The Prisma database represents one household. Require every authenticated caller to map to
+ * a member of that household before any chores/allowance route runs. This prevents a parent from
+ * another Supabase house receiving full access merely because their JWT also says `parent`.
+ */
+export async function requireChoresHouseholdAccess(
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction
+): Promise<void> {
+  if (!req.user) {
+    res.status(401).json({ error: 'Authentication required' });
+    return;
+  }
+
+  const house = await authorizeHouseAccess(req.user);
+  if (!house.ok || house.houseId !== config.chores.houseId) {
+    res.status(403).json({ error: 'Account is not a member of this chores household' });
+    return;
+  }
+
+  if (hasFullChoresAccess(req.user.role)) {
+    await bootstrapEmptyChoresHousehold();
+  }
+
+  const memberId = await resolveHouseholdMemberIdForChildUser(
+    req.user.userId,
+    req.user.name
+  );
+  if (memberId == null) {
+    res.status(403).json({ error: 'Account is not a member of this chores household' });
+    return;
+  }
+
+  next();
 }

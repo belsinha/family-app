@@ -2,6 +2,7 @@ import { getSupabaseClient } from '../supabase.js';
 import type { WorkLog } from '../../types.js';
 
 export async function addWorkLog(
+  houseId: number,
   childId: number,
   projectId: number,
   hours: number,
@@ -17,6 +18,7 @@ export async function addWorkLog(
   const { data: insertedLog, error: insertError } = await supabase
     .from('work_logs')
     .insert({
+      house_id: houseId,
       child_id: childId,
       project_id: projectId,
       hours,
@@ -49,7 +51,7 @@ export async function addWorkLog(
   return insertedLog as WorkLog;
 }
 
-export async function getWorkLogsByChildId(childId: number): Promise<WorkLog[]> {
+export async function getWorkLogsByChildId(childId: number, houseId: number): Promise<WorkLog[]> {
   const supabase = getSupabaseClient();
   const { data: workLogs, error } = await supabase
     .from('work_logs')
@@ -58,6 +60,7 @@ export async function getWorkLogsByChildId(childId: number): Promise<WorkLog[]> 
       project:projects(*)
     `)
     .eq('child_id', childId)
+    .eq('house_id', houseId)
     .order('work_date', { ascending: false })
     .order('created_at', { ascending: false });
   
@@ -86,7 +89,7 @@ export async function getWorkLogsByChildId(childId: number): Promise<WorkLog[]> 
   })) as WorkLog[];
 }
 
-export async function getPendingWorkLogs(): Promise<any[]> {
+export async function getPendingWorkLogs(houseId: number): Promise<any[]> {
   const supabase = getSupabaseClient();
   const { data: workLogs, error } = await supabase
     .from('work_logs')
@@ -96,6 +99,7 @@ export async function getPendingWorkLogs(): Promise<any[]> {
       child:children(id, name)
     `)
     .eq('status', 'pending')
+    .eq('house_id', houseId)
     .order('created_at', { ascending: true });
   
   if (error) {
@@ -111,6 +115,7 @@ export async function getPendingWorkLogs(): Promise<any[]> {
 
 export async function updateWorkLog(
   workLogId: number,
+  houseId: number,
   hours: number,
   description: string,
   workDate?: string
@@ -118,7 +123,7 @@ export async function updateWorkLog(
   const supabase = getSupabaseClient();
   
   // First check if the work log exists and its current status
-  const existingLog = await getWorkLogById(workLogId);
+  const existingLog = await getWorkLogById(workLogId, houseId);
   if (!existingLog) {
     throw new Error('Work log not found');
   }
@@ -142,6 +147,7 @@ export async function updateWorkLog(
     .from('work_logs')
     .update(updateData)
     .eq('id', workLogId)
+    .eq('house_id', houseId)
     .select(`
       *,
       project:projects(*)
@@ -160,12 +166,13 @@ export async function updateWorkLog(
 
 export async function updateWorkLogStatus(
   workLogId: number,
+  houseId: number,
   status: 'approved' | 'declined'
 ): Promise<WorkLog> {
   const supabase = getSupabaseClient();
   
   // Get the current work log to verify it's pending
-  const existingLog = await getWorkLogById(workLogId);
+  const existingLog = await getWorkLogById(workLogId, houseId);
   if (!existingLog) {
     throw new Error('Work log not found');
   }
@@ -186,6 +193,7 @@ export async function updateWorkLogStatus(
     .from('work_logs')
     .update({ status: statusValue })
     .eq('id', workLogId)
+    .eq('house_id', houseId)
     .eq('status', 'pending') // Additional safety check
     .select(`
       *,
@@ -221,7 +229,7 @@ export async function updateWorkLogStatus(
   } as WorkLog;
 }
 
-export async function getWorkLogById(workLogId: number): Promise<WorkLog | null> {
+export async function getWorkLogById(workLogId: number, houseId: number): Promise<WorkLog | null> {
   const supabase = getSupabaseClient();
   const { data: workLog, error } = await supabase
     .from('work_logs')
@@ -230,6 +238,7 @@ export async function getWorkLogById(workLogId: number): Promise<WorkLog | null>
       project:projects(*)
     `)
     .eq('id', workLogId)
+    .eq('house_id', houseId)
     .single();
   
   if (error) {
