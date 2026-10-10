@@ -76,6 +76,14 @@ export function collectProductionStartupProblems(env: NodeJS.ProcessEnv): string
   }
 
   // ALLOWED_ORIGINS is the intended production knob; PUBLIC_APP_ORIGIN (a single convenience
+  if (!env.SUPABASE_SERVICE_ROLE_KEY || looksLikePlaceholder(env.SUPABASE_SERVICE_ROLE_KEY)) {
+    problems.push('SUPABASE_SERVICE_ROLE_KEY is required for the backend deny-by-default RLS tables.');
+  }
+  const choresHouseId = Number(env.CHORES_HOUSE_ID);
+  if (!Number.isSafeInteger(choresHouseId) || choresHouseId <= 0) {
+    problems.push('CHORES_HOUSE_ID must identify the positive Supabase house owned by this chores database.');
+  }
+
   // origin, folded into the same allowlist in config.ts) also satisfies this so deployments that
   // only set the latter aren't broken by this gate.
   const effectiveOriginCount =

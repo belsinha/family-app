@@ -85,26 +85,31 @@ export async function getPointsByChildId(childId: number): Promise<Point[]> {
   })) as Point[];
 }
 
-export async function getChildBalance(childId: number): Promise<{ bonus: number; demerit: number; balance: number }> {
+export async function getChildBalance(childId: number, financialOnly = false): Promise<{ bonus: number; demerit: number; balance: number }> {
   const supabase = getSupabaseClient();
   
   // Get bonus points
-  const { data: bonusData, error: bonusError } = await supabase
+  let bonusQuery = supabase
     .from('points')
     .select('points')
     .eq('child_id', childId)
-    .eq('type', 'bonus');
+    .eq('type', 'bonus').is('voided_at', null);
+  // Fail closed if the migration is absent. A flag must never turn task points into money.
+  if (financialOnly) bonusQuery = bonusQuery.eq('source', 'legacy');
+  const { data: bonusData, error: bonusError } = await bonusQuery;
   
   if (bonusError) {
     throw new Error(`Failed to fetch bonus points: ${bonusError.message}`);
   }
   
   // Get demerit points
-  const { data: demeritData, error: demeritError } = await supabase
+  let demeritQuery = supabase
     .from('points')
     .select('points')
     .eq('child_id', childId)
-    .eq('type', 'demerit');
+    .eq('type', 'demerit').is('voided_at', null);
+  if (financialOnly) demeritQuery = demeritQuery.eq('source', 'legacy');
+  const { data: demeritData, error: demeritError } = await demeritQuery;
   
   if (demeritError) {
     throw new Error(`Failed to fetch demerit points: ${demeritError.message}`);

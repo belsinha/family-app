@@ -94,6 +94,10 @@ export const config = {
     // The Prisma/SQLite chores database represents exactly one Supabase house.
     houseId: Number.parseInt(process.env.CHORES_HOUSE_ID || '1', 10),
   },
+  taskPoints: {
+    schemaReady: process.env.TASK_POINT_SCHEMA_READY === 'true',
+    enabled: process.env.TASK_POINT_SCHEMA_READY === 'true' && process.env.TASK_POINT_TRACKING_ENABLED === 'true',
+  },
   jwt: {
     secret: jwtSecretEnv || DEV_ONLY_JWT_SECRET,
     // Parent/family (admin-equivalent) accounts: short-lived in production so a leaked token

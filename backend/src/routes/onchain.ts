@@ -138,7 +138,7 @@ router.post(
       }
 
       // Check available notional balance
-      const pointBalance = await getChildBalance(childId);
+      const pointBalance = await getChildBalance(childId, true);
       const notionalSat = Math.max(0, (pointBalance.bonus - pointBalance.demerit) * SATOSHIS_PER_BONUS_POINT);
       const withdrawn = await getTotalWithdrawnSatoshis(childId);
       const available = notionalSat - withdrawn;
@@ -204,7 +204,7 @@ router.post(
       }
 
       // Validate against notional balance
-      const pointBalance = await getChildBalance(childId);
+      const pointBalance = await getChildBalance(childId, true);
       const notionalSat = Math.max(0, (pointBalance.bonus - pointBalance.demerit) * SATOSHIS_PER_BONUS_POINT);
       const withdrawn = await getTotalWithdrawnSatoshis(childId);
       const available = notionalSat - withdrawn;
@@ -256,7 +256,7 @@ router.get('/available-credits/:childId', authenticate, async (req: AuthRequest,
     const auth = await resolveAndAuthorizeChildId(req, req.params.childId);
     if ('error' in auth) return res.status(auth.status).json({ error: auth.error });
 
-    const pointBalance = await getChildBalance(auth.childId);
+    const pointBalance = await getChildBalance(auth.childId, true);
     const notionalSat = Math.max(0, (pointBalance.bonus - pointBalance.demerit) * SATOSHIS_PER_BONUS_POINT);
     const withdrawn = await getTotalWithdrawnSatoshis(auth.childId);
     const available = Math.max(0, notionalSat - withdrawn);

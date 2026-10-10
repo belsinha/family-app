@@ -203,6 +203,10 @@ router.delete('/:pointId', authenticate, requireRole('parent'), async (req: Auth
       return res.status(access.status).json({ error: access.error });
     }
 
+    if (point.source === 'task') {
+      return res.status(409).json({ error: 'Void task points with a reason to preserve their audit history' });
+    }
+
     // Delete the corresponding Bitcoin conversion first (if it exists)
     // This will automatically remove the Bitcoin balance change
     try {

@@ -14,6 +14,8 @@ const backendRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '
 
 const RELEVANT_KEYS = [
   'NODE_ENV',
+  'SUPABASE_SERVICE_ROLE_KEY',
+  'CHORES_HOUSE_ID',
   'JWT_SECRET',
   'SUPABASE_URL',
   'SUPABASE_ANON_KEY',
@@ -26,9 +28,11 @@ const RELEVANT_KEYS = [
 
 const VALID_PRODUCTION_ENV: Record<string, string> = {
   NODE_ENV: 'production',
+  SUPABASE_SERVICE_ROLE_KEY: 'sb_secret_abcdefghijklmnopqrstuvwxyz0123456789', // gitleaks:allow synthetic test fixture
+  CHORES_HOUSE_ID: '1',
   JWT_SECRET: 'Qz7$kP2!vN9#mR4@xT6^wL1&hB8*yC3(dF5)gJ0-uK',
   SUPABASE_URL: 'https://abcxyzcorp.supabase.co',
-  SUPABASE_ANON_KEY: 'sb_publishable_abcdefghijklmnopqrstuvwxyz0123456789',
+  SUPABASE_ANON_KEY: 'sb_publishable_abcdefghijklmnopqrstuvwxyz0123456789', // gitleaks:allow synthetic test fixture
   ALLOWED_ORIGINS: 'https://app.example-family.com',
   CHORES_DATABASE_URL: 'file:/opt/render/project/src/persist/chores.db',
   DATABASE_PATH: '/opt/render/project/src/persist/family-app.db',
