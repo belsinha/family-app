@@ -20,6 +20,8 @@ export function hasFullChoresAccess(role: Role): boolean {
 export async function ensureChoreTemplateEditorRole(opts?: {
   parentLoginName?: string | null;
 }): Promise<void> {
+  // Preserve imported permissions; never infer grants by name in production.
+  if (config.isProduction || /^postgres(ql)?:/.test(config.choresDatabaseUrl)) return;
   const hasEditor = async () =>
     (await prisma.householdMember.findFirst({ where: { canEditChores: true } })) != null;
   if (await hasEditor()) return;
@@ -51,6 +53,8 @@ const DEFAULT_CHORES_MEMBERS: { name: string; canEditChores: boolean }[] = [
  * Safe to call on every parent read of members/categories/templates; no-ops when data is present.
  */
 export async function bootstrapEmptyChoresHousehold(): Promise<void> {
+  // Postgres state comes from an explicit import, never a read-triggered default seed.
+  if (/^postgres(ql)?:/.test(config.choresDatabaseUrl)) return;
   const memberCount = await prisma.householdMember.count();
   if (memberCount === 0) {
     await prisma.householdMember.createMany({ data: DEFAULT_CHORES_MEMBERS });

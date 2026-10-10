@@ -4,6 +4,7 @@ import { migrateBitcoinTables, cleanupOrphanedConversions } from './migrate-bitc
 import { migrateProjectsTable, migrateWorkLogsForProjects } from './migrate-project-tables.js';
 import { assertProductionCredentialsAreSafe } from './productionCredentialCheck.js';
 import { config } from '../config.js';
+import { assertChoresStoreReady } from './prisma.js';
 
 /**
  * Migrate active_timers table (persistent work timer) - creates it if it doesn't exist.
@@ -265,6 +266,7 @@ export async function initDatabase() {
     if (housesError) {
       // Table might not exist - this is OK, user needs to run schema
       if (housesError.code === 'PGRST116' || housesError.message.includes('relation') || housesError.message.includes('does not exist')) {
+        if (config.isProduction) throw new Error('Production schema is missing; apply reviewed migrations explicitly.');
         console.warn('⚠️  Database tables not found. Please run the PostgreSQL schema in your Supabase SQL editor:');
         console.warn('   File: backend/src/db/schema-postgres-supabase.sql');
         console.warn('   Or create tables manually in Supabase dashboard.');
@@ -274,6 +276,13 @@ export async function initDatabase() {
     }
     
     console.log('Database connection successful');
+    await assertChoresStoreReady();
+    // Production deployment must not migrate, seed or clean financial history on boot.
+    if (config.isProduction) {
+      if (!houses?.length) throw new Error('Production house setup is missing; automatic seeding is disabled.');
+      await assertProductionCredentialsAreSafe();
+      return;
+    }
     
     // Migrate Bitcoin tables if they don't exist
     try {

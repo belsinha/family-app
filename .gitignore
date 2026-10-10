@@ -95,3 +95,6 @@ pnpm-lock.yaml
 .eslintcache
 .stylelintcache
 
+
+# Generated private chores Postgres Prisma client
+backend/generated/

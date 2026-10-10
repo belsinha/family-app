@@ -120,3 +120,14 @@ test('formatProductionStartupProblems renders a header, bullet list, and remedia
   assert.match(message, /- ALLOWED_ORIGINS is not set\./);
   assert.match(message, /Render Dashboard/);
 });
+
+test('Postgres chores connection must match project, TLS, session port and private schema; errors never disclose credentials', () => {
+  const base = { ...VALID_PRODUCTION_ENV, SUPABASE_URL: 'https://qusvfeposzfmhggrvots.supabase.co' };
+  const url = 'postgresql://postgres@db.qusvfeposzfmhggrvots.supabase.co:5432/postgres?sslmode=require&schema=chores';
+  assert.deepEqual(collectProductionStartupProblems({ ...base, CHORES_DATABASE_URL: url }), []);
+  for (const bad of [url.replace('qusvfeposzfmhggrvots', 'anotherproject'), url.replace('5432', '6543'), url.replace('require', 'disable'), url.replace('chores', 'public'), 'https://private-credential@invalid']) {
+    const problems = collectProductionStartupProblems({ ...base, CHORES_DATABASE_URL: bad });
+    assert.ok(problems.some(p => p.includes('CHORES_DATABASE_URL')));
+    assert.ok(problems.every(p => !p.includes(bad) && !p.includes('private-credential')));
+  }
+});

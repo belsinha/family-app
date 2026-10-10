@@ -1,4 +1,5 @@
 import { PrismaClient } from '@prisma/client';
+import { PrismaClient as PostgresPrismaClient } from '../../generated/chores-postgres/index.js';
 import { execSync } from 'node:child_process';
 import path from 'path';
 import fs from 'fs';
@@ -108,7 +109,21 @@ runChoresPrismaMigrateSync();
 
 const globalForPrisma = globalThis as unknown as { prisma: PrismaClient };
 
-export const prisma = globalForPrisma.prisma ?? new PrismaClient();
+const postgresChores = /^postgres(ql)?:/.test(process.env.CHORES_DATABASE_URL ?? '');
+// Both clients implement the same chores models. Preserve route types and SQLite development.
+export const prisma: PrismaClient = globalForPrisma.prisma ?? (postgresChores
+  ? new PostgresPrismaClient() as unknown as PrismaClient
+  : new PrismaClient());
+
+export async function assertChoresStoreReady(): Promise<void> {
+  if (!postgresChores) return;
+  const metadata = await prisma.$queryRawUnsafe<{ houseId: bigint; sourceSha256: string }[]>(
+    'SELECT "houseId", "sourceSha256" FROM chores."StoreMetadata" WHERE id=1'
+  );
+  if (metadata.length !== 1 || Number(metadata[0].houseId) !== config.chores.houseId) {
+    throw new Error('Postgres chores store is not imported or belongs to another house.');
+  }
+}
 
 if (process.env.NODE_ENV !== 'production') {
   globalForPrisma.prisma = prisma;

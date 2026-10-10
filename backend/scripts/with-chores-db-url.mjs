@@ -34,7 +34,8 @@ function remapMisconfiguredRootDataPath(absolutePath) {
 function normalizeChoresDatabaseUrl() {
   let url = process.env.CHORES_DATABASE_URL || 'file:./data/chores.db';
   if (!url.startsWith('file:')) {
-    return;
+    console.error('SQLite migration/seed/reset commands are disabled for external chores stores. Use the reviewed Supabase migration/import procedure.');
+    process.exit(1);
   }
   const trimmed = url.trim();
   let abs;
