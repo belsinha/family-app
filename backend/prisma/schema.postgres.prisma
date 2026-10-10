@@ -1,0 +1,120 @@
+generator client {
+  provider = "prisma-client-js"
+  output = "../generated/chores-postgres"
+  previewFeatures = ["multiSchema"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("CHORES_DATABASE_URL")
+  schemas  = ["chores"]
+}
+
+model ChoreCategory {
+  id        Int            @id @default(autoincrement())
+  name      String         @unique
+  sortOrder Int            @default(0)
+  templates TaskTemplate[]
+
+  @@schema("chores")
+}
+
+model HouseholdMember {
+  id                    Int                    @id @default(autoincrement())
+  name                  String
+  canEditChores         Boolean                @default(false)
+  taskInstances         TaskInstance[]         @relation("AssignedHouseholdTasks")
+  liabilityTaskInstances TaskInstance[]      @relation("AllowanceLiabilityMember")
+  monthlyAllowances     MonthlyAllowance[]
+  templateAssignees     TaskTemplateAssignee[]
+
+  @@schema("chores")
+}
+
+model MonthlyAllowance {
+  id                  Int               @id @default(autoincrement())
+  yearMonth           String
+  householdMemberId   Int
+  householdMember     HouseholdMember   @relation(fields: [householdMemberId], references: [id], onDelete: Cascade)
+  baseCents           Int               @default(10000)
+  requiredChoreCount  Int
+  completedChoreCount Int
+  pendingChoreCount   Int
+  missedChoreCount    Int
+  excusedChoreCount   Int               @default(0)
+  proposedCents       Int
+  status              String            @default("PENDING_APPROVAL")
+  submittedAt         String
+  decidedAt           String?
+  approverUserId      Int?
+  rejectionReason     String?
+
+  @@unique([yearMonth, householdMemberId])
+  @@index([yearMonth, status])
+
+  @@schema("chores")
+}
+
+model TaskTemplateAssignee {
+  templateId        Int
+  householdMemberId Int
+  template          TaskTemplate    @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  member            HouseholdMember @relation(fields: [householdMemberId], references: [id], onDelete: Cascade)
+
+  @@id([templateId, householdMemberId])
+
+  @@schema("chores")
+}
+
+model TaskTemplate {
+  id                   Int                    @id @default(autoincrement())
+  name                 String
+  description          String?
+  categoryId           Int
+  category             ChoreCategory          @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  houseArea            String                 @default("NONE")
+  frequencyType        String
+  dayOfWeek            Int?
+  weekOfMonth          Int?
+  dayOfMonth           Int?
+  semiannualMonths     String?
+  conditionalDayOfWeek Int?
+  conditionalAfterTime String?
+  timeBlock            String
+  pointsBase           Int                    @default(1)
+  active               Boolean                @default(true)
+  anyoneMayComplete    Boolean                @default(false)
+  taskInstances        TaskInstance[]
+  assignees            TaskTemplateAssignee[]
+
+  @@schema("chores")
+}
+
+model TaskInstance {
+  id                         Int               @id @default(autoincrement())
+  templateId                 Int
+  template                   TaskTemplate      @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  assignedToId               Int?
+  assignedTo                 HouseholdMember?  @relation("AssignedHouseholdTasks", fields: [assignedToId], references: [id])
+  allowanceLiabilityMemberId Int?
+  allowanceLiabilityMember   HouseholdMember?  @relation("AllowanceLiabilityMember", fields: [allowanceLiabilityMemberId], references: [id])
+  taskDate                   String
+  status                     String
+  doneAt                     String?
+  doneWithoutReminder        Boolean           @default(false)
+  notes                      String?
+  complaintLogged            Boolean           @default(false)
+  isExtra                    Boolean           @default(false)
+  availableAfter             String?
+  excuseStatus               String            @default("NONE")
+  excuseNote                 String?
+  excuseRequestedAt          String?
+  excuseDecidedAt            String?
+  excuseDeciderUserId        Int?
+
+  @@unique([templateId, taskDate, assignedToId])
+  @@index([taskDate])
+  @@index([assignedToId, taskDate])
+
+  @@schema("chores")
+}

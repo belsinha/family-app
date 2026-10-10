@@ -4,7 +4,7 @@
   "type": "module",
   "scripts": {
     "dev": "tsx watch src/server.ts",
-    "build": "tsc && npm run copy-schema && node scripts/copy-spa-to-dist.mjs",
+    "build": "npm run db:chores:generate && tsc && npm run copy-schema && node scripts/copy-spa-to-dist.mjs",
     "copy-schema": "node scripts/copy-schema.js",
     "start": "node dist/server.js",
     "start:render": "node dist/server.js",
@@ -12,10 +12,12 @@
     "db:chores:seed": "npm run db:chores:migrate && node scripts/with-chores-db-url.mjs npx tsx prisma/seed-chores.ts",
     "db:chores:seed:reset": "node scripts/chores-seed-reset.mjs",
     "db:chores:reset": "node scripts/with-chores-db-url.mjs npx prisma migrate reset --force",
-    "test": "node --import ./scripts/test-env.mjs --import tsx --experimental-test-module-mocks --test src/routes/authz.test.ts src/db/schemaAuthorization.test.ts src/services/scoring.test.ts src/services/taskGenerator.test.ts src/services/allowance.test.ts src/services/choreImportParse.test.ts src/bitcoinWalletConfig.test.ts src/services/bitcoinWalletDerivation.test.ts src/services/workTimer.test.ts src/routes/workTimer.test.ts src/corsOrigins.test.ts src/securityMiddleware.smoke.test.ts src/startupSecurityGate.test.ts src/config.smoke.test.ts src/middleware/rateLimit.test.ts src/routes/taskPoints.test.ts src/db/taskLedger.test.ts src/routes/childChoreLink.test.ts",
+    "test": "node --import ./scripts/test-env.mjs --import tsx --experimental-test-module-mocks --test src/routes/authz.test.ts src/db/schemaAuthorization.test.ts src/services/scoring.test.ts src/services/taskGenerator.test.ts src/services/allowance.test.ts src/services/choreImportParse.test.ts src/bitcoinWalletConfig.test.ts src/services/bitcoinWalletDerivation.test.ts src/services/workTimer.test.ts src/routes/workTimer.test.ts src/corsOrigins.test.ts src/securityMiddleware.smoke.test.ts src/startupSecurityGate.test.ts src/config.smoke.test.ts src/middleware/rateLimit.test.ts src/routes/taskPoints.test.ts src/db/taskLedger.test.ts src/routes/childChoreLink.test.ts src/db/choresPostgres.test.ts src/db/productionStartupReadOnly.test.ts",
     "test:authz": "node --import ./scripts/test-env.mjs --import tsx --experimental-test-module-mocks --test src/routes/authz.test.ts src/db/schemaAuthorization.test.ts",
     "test:timer": "node --import ./scripts/test-env.mjs --import tsx --experimental-test-module-mocks --test src/services/workTimer.test.ts src/routes/workTimer.test.ts src/db/schemaAuthorization.test.ts",
-    "test:task-points": "node --import ./scripts/test-env.mjs --import tsx --experimental-test-module-mocks --test src/routes/taskPoints.test.ts src/db/taskLedger.test.ts src/routes/childChoreLink.test.ts"
+    "test:task-points": "node --import ./scripts/test-env.mjs --import tsx --experimental-test-module-mocks --test src/routes/taskPoints.test.ts src/db/taskLedger.test.ts src/routes/childChoreLink.test.ts",
+    "db:chores:generate": "prisma generate && prisma generate --schema prisma/schema.postgres.prisma",
+    "db:chores:import": "node scripts/import-chores-postgres.mjs"
   },
   "dependencies": {
     "@bitcoinerlab/secp256k1": "^1.2.0",
@@ -39,6 +41,7 @@
   },
   "devDependencies": {
     "@electric-sql/pglite": "0.5.8",
+    "@electric-sql/pglite-socket": "0.2.11",
     "@types/bcryptjs": "^2.4.6",
     "@types/cors": "^2.8.17",
     "@types/express": "^4.17.21",

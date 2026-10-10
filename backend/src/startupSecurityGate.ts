@@ -107,6 +107,20 @@ export function collectProductionStartupProblems(env: NodeJS.ProcessEnv): string
           'it points at an absolute path on a persistent disk (see render.yaml).'
       );
     }
+  } else {
+    try {
+      const url = new URL(choresUrl);
+      const ref = new URL(supabaseUrl ?? '').hostname.split('.')[0];
+      const direct = url.hostname === `db.${ref}.supabase.co`;
+      const session = url.hostname.endsWith('.pooler.supabase.com') && decodeURIComponent(url.username).endsWith(`.${ref}`);
+      if (!['postgres:', 'postgresql:'].includes(url.protocol) || (!direct && !session) ||
+          (url.port && url.port !== '5432') || !['require', 'verify-full'].includes(url.searchParams.get('sslmode') ?? '') ||
+          url.searchParams.get('schema') !== 'chores') {
+        problems.push('CHORES_DATABASE_URL must use the same Supabase project, direct/session TLS connection and schema=chores.');
+      }
+    } catch {
+      problems.push('CHORES_DATABASE_URL is not a valid chores connection URL.');
+    }
   }
 
   return problems;

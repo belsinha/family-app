@@ -91,7 +91,7 @@ export const config = {
   databasePath: process.env.DATABASE_PATH || './data/family-app.db',
   choresDatabaseUrl: process.env.CHORES_DATABASE_URL || 'file:./data/chores.db',
   chores: {
-    // The Prisma/SQLite chores database represents exactly one Supabase house.
+    // Each chores store (SQLite development or private Supabase Postgres) represents one house.
     houseId: Number.parseInt(process.env.CHORES_HOUSE_ID || '1', 10),
   },
   taskPoints: {
