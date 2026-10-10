@@ -70,7 +70,7 @@ jobs:
         run: npx prisma migrate deploy
 
   dependency-audit:
-    name: Dependency audit / review
+    name: Dependency vulnerability audit
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -87,7 +87,9 @@ jobs:
         run: npm audit --audit-level=high
 
       - name: Dependency review (PRs only)
-        if: github.event_name == 'pull_request'
+        # Enable the additional GitHub comparison when an administrator enables Dependency graph.
+        # The full installed dependency npm audit above is always required.
+        if: github.event_name == 'pull_request' && vars.DEPENDENCY_GRAPH_ENABLED == 'true'
         uses: actions/dependency-review-action@v4
 
   secret-scan:
