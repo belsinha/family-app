@@ -1,7 +1,9 @@
 import { Router } from 'express';
+import { writeRateLimiter } from '../middleware/rateLimit.js';
 import usersRoutes from './users.js';
 import childrenRoutes from './children.js';
 import pointsRoutes from './points.js';
+import taskPointsRoutes from './task-points.js';
 import authRoutes from './auth.js';
 import bitcoinRoutes from './bitcoin.js';
 import workLogsRoutes from './work-logs.js';
@@ -17,9 +19,14 @@ import allowanceRoutes from './allowance.js';
 
 const router = Router();
 
+// Applies to every non-GET/HEAD/OPTIONS request under /api; route-specific limiters (login,
+// upload) stack on top of this for the routes that need tighter caps.
+router.use(writeRateLimiter);
+
 router.use('/auth', authRoutes);
 router.use('/users', usersRoutes);
 router.use('/children', childrenRoutes);
+router.use('/points', taskPointsRoutes);
 router.use('/points', pointsRoutes);
 router.use('/bitcoin', bitcoinRoutes);
 router.use('/bitcoin', onchainRoutes);

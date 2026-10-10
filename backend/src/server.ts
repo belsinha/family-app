@@ -1,7 +1,10 @@
 import express from 'express';
-import cors from 'cors';
 import path from 'path';
+// Importing config runs the production startup security gate as a side effect (see
+// startupSecurityGate.ts) — it must stay the first local import so an unsafe production config
+// exits before any other module (routes, DB init, etc.) does real work.
 import { config } from './config.js';
+import { applySecurityMiddleware } from './securityMiddleware.js';
 import { initDatabase } from './db/init-supabase.js';
 import { logger } from './middleware/logger.js';
 import { errorHandler } from './middleware/errorHandler.js';
@@ -18,12 +21,17 @@ const frontendIndex = frontendResolved?.index ?? '';
 
 const app = express();
 
+// Render (and most PaaS hosts) sit in front of this app as a single reverse-proxy hop; trust it
+// so req.ip reflects the real client (not the proxy) — this also keeps rate limiting keyed by
+// the actual caller instead of one shared proxy IP. `1` = trust exactly one hop, never `true`
+// (which would let a client spoof X-Forwarded-For and bypass IP-based rate limiting entirely).
+app.set('trust proxy', 1);
+
 // Middleware
-app.use(cors({
-  origin: true,
-  credentials: true,
-}));
-app.use(express.json());
+applySecurityMiddleware(app, {
+  allowedOrigins: config.cors.allowedOrigins,
+  allowLocalhost: config.cors.allowLocalhost,
+});
 app.use(logger);
 
 // Health check (before database init for quick health checks)

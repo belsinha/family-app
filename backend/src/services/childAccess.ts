@@ -33,6 +33,7 @@ export async function authorizeChildAccess(
     }
     const persistedUser = await getUserById(user.userId);
     if (
+      persistedUser?.role !== 'child' ||
       persistedUser?.house_id == null ||
       own.house_id == null ||
       persistedUser.house_id !== own.house_id
@@ -49,6 +50,7 @@ export async function authorizeChildAccess(
 
   const parent = await getUserById(user.userId);
   if (
+    parent?.role !== 'parent' ||
     parent?.house_id == null ||
     child.house_id == null ||
     parent.house_id !== child.house_id

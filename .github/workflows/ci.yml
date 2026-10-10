@@ -1,0 +1,111 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: '24'
+
+jobs:
+  build-and-test:
+    name: Install, typecheck/build, backend tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate Prisma client
+        working-directory: backend
+        run: npx prisma generate
+
+      - name: Build frontend (typecheck + vite build)
+        working-directory: frontend
+        run: npm run build
+
+      - name: Build backend (typecheck + build)
+        working-directory: backend
+        run: npm run build
+
+      - name: Backend tests
+        working-directory: backend
+        run: npm test
+
+  prisma-migration-sanity:
+    name: Prisma migration sanity
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate Prisma client
+        working-directory: backend
+        run: npx prisma generate
+
+      - name: Apply migrations to a fresh database
+        working-directory: backend
+        env:
+          CHORES_DATABASE_URL: file:./data/ci-chores.db
+        run: npx prisma migrate deploy
+
+  dependency-audit:
+    name: Dependency vulnerability audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: npm audit (high/critical, blocking)
+        run: npm audit --audit-level=high
+
+      - name: Dependency review (PRs only)
+        # Enable the additional GitHub comparison when an administrator enables Dependency graph.
+        # The full installed dependency npm audit above is always required.
+        if: github.event_name == 'pull_request' && vars.DEPENDENCY_GRAPH_ENABLED == 'true'
+        uses: actions/dependency-review-action@v4
+
+  secret-scan:
+    name: Secret scanning
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Gitleaks
+        run: |
+          curl -fsSL -o gitleaks.tar.gz https://github.com/gitleaks/gitleaks/releases/download/v8.21.2/gitleaks_8.21.2_linux_x64.tar.gz
+          tar -xzf gitleaks.tar.gz gitleaks
+          sudo install -m 755 gitleaks /usr/local/bin/gitleaks
+
+      # --no-git: scan the checked-out working tree only, not commit history. A prior commit has a
+      # real secret that isn't being rotated right now; scoping to the working tree keeps the gate
+      # meaningful for anything new instead of leaving it permanently red over that old commit.
+      - name: Scan working tree for secrets
+        run: gitleaks detect --no-git --source . --config .gitleaks.toml --redact --exit-code 1

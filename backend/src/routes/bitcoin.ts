@@ -79,7 +79,7 @@ router.post('/convert', authenticate, requireRole('parent'), async (req: AuthReq
     }
 
     // Check child has sufficient bonus points
-    const balance = await getChildBalance(childId);
+    const balance = await getChildBalance(childId, true);
     if (balance.bonus < bonusPoints) {
       return res.status(400).json({ 
         error: `Insufficient bonus points. Child has ${balance.bonus}, requested ${bonusPoints}` 
@@ -166,7 +166,7 @@ router.get('/balance/:childId', authenticate, async (req: AuthRequest, res, next
     }
 
     // Get current point balance for the child
-    const balance = await getChildBalance(childId);
+    const balance = await getChildBalance(childId, true);
     
     // Calculate Bitcoin balance based on CURRENT points (not historical conversions)
     // Net bonus points = bonus - demerit

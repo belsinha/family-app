@@ -1,7 +1,12 @@
 import type { Child, Point, User, AddPointsRequest, ChildBalance, ApiError, ChangePasswordRequest, ChangePasswordResponse, BitcoinConversion, ConvertBonusRequest, ConvertBonusResponse, ChildBitcoinBalance, WorkLog, AddWorkLogRequest, UpdateWorkLogRequest, Project, CreateProjectRequest, UpdateProjectRequest, ProjectStatistics, OnchainBalanceResponse, DepositUriResponse, ChildCreditPayout, SettleCreditsRequest, SettleCreditsResponse, AppleCashPayoutRequest, ActiveTimer, ActiveTimerResponse, StopTimerResponse } from '../../../shared/src/types';
 import { getApiBaseUrl } from './getApiBaseUrl';
+import type { AddTaskPointsRequest } from '../../../shared/src/types';
 
 const API_BASE_URL = getApiBaseUrl();
+
+/** Dispatched when the API rejects a request as unauthorized (missing/expired/invalid token),
+ *  so AuthContext can clear stale session state and route back to the login screen. */
+export const UNAUTHORIZED_EVENT = 'family-app:unauthorized';
 
 async function request<T>(
   endpoint: string,
@@ -36,6 +41,11 @@ async function request<T>(
           // Use default error message
         }
       }
+      // Only treat this as a dead session if we sent a token — a 401 on the login
+      // endpoint itself just means bad credentials, not an expired session.
+      if (response.status === 401 && token) {
+        window.dispatchEvent(new CustomEvent(UNAUTHORIZED_EVENT));
+      }
       throw new Error(errorMessage);
     }
 
@@ -64,8 +74,14 @@ export const api = {
   // Children
   getChildren: (): Promise<Child[]> => request<Child[]>('/children'),
   getChildById: (id: number): Promise<Child> => request<Child>(`/children/${id}`),
+  linkChildChoreMember: (id: number, householdMemberId: number): Promise<Child> =>
+    request<Child>(`/children/${id}/chore-member`, { method: 'PUT', body: JSON.stringify({ householdMemberId }) }),
 
   // Points
+  addTaskPoints: (data: AddTaskPointsRequest): Promise<{ point: Point; replayed: boolean }> =>
+    request('/points/task', { method: 'POST', body: JSON.stringify(data) }),
+  voidTaskPoint: (pointId: number, reason: string): Promise<Point> =>
+    request(`/points/${pointId}/void`, { method: 'POST', body: JSON.stringify({ reason }) }),
   addPoints: (data: AddPointsRequest): Promise<Point> =>
     request<Point>('/points', {
       method: 'POST',

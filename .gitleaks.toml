@@ -1,0 +1,14 @@
+title = "family-app gitleaks config"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "generated/vendor paths not part of the committed source"
+paths = [
+  '''node_modules''',
+  '''(^|[\\/])dist([\\/]|$)''',
+  '''(^|[\\/])build([\\/]|$)''',
+  '''backend[\\/]data[\\/]''',
+  '''backend[\\/]prisma[\\/]data[\\/]''',
+]

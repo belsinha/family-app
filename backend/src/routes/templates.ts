@@ -8,6 +8,7 @@ import {
   detectUploadKind,
   MAX_UPLOAD_BYTES,
 } from '../services/choreImportParse.js';
+import { uploadRateLimiter } from '../middleware/rateLimit.js';
 import {
   bootstrapEmptyChoresHousehold,
   hasFullChoresAccess,
@@ -151,6 +152,7 @@ router.get('/', authenticate, async (req: AuthRequest, res, next) => {
 
 router.post(
   '/import-parse',
+  uploadRateLimiter,
   authenticate,
   requireCanEditChores,
   importUpload,

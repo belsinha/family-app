@@ -2,7 +2,10 @@ services:
   # Single web service: API + Vite SPA. Deep links (/login, /chores, …) work without CDN rewrite rules.
   # Build must run from repo root — not `cd backend && npm run build` alone (frontend must build first).
   #
-  # Chores + main app SQLite live on a persistent disk so templates and family data survive deploys/restarts.
+  # Chores live on a persistent disk (chores.db, Prisma/SQLite) so task templates and completion
+  # history survive deploys/restarts. Family/user/points data lives in Supabase, not on this disk —
+  # DATABASE_PATH below is unused legacy config (server.ts wires up Supabase, not the sql.js path in
+  # src/db/init.ts); see docs/security-runbook.md "Data map" before assuming this disk covers it.
   # Render only allows disks on paid web services (not `plan: free`). If you switch back to free, remove the
   # `disk` block and expect an empty chores DB after each deploy unless you use an external database.
   - type: web
@@ -23,12 +26,40 @@ services:
         value: /opt/render/project/src/persist/family-app.db
       - key: CHORES_DATABASE_URL
         value: file:/opt/render/project/src/persist/chores.db
+      # sync: false — set these manually in the Render Dashboard, never inline here.
+      # Use your own Supabase project's rotated key; do not reuse any previously-shared
+      # dev key (see README.md "Security: rotate the Supabase key" / backend/SUPABASE_SETUP.md).
       - key: SUPABASE_URL
         sync: false
       - key: SUPABASE_ANON_KEY
         sync: false
       - key: SUPABASE_SERVICE_ROLE_KEY
         sync: false
+      # Required — the backend refuses to boot in production without this (see
+      # backend/src/startupSecurityGate.ts). Set to the exact origin(s) users load the app from,
+      # comma-separated (e.g. https://family-app-backend.onrender.com, plus a custom domain if any).
+      - key: ALLOWED_ORIGINS
+        sync: false
+      # Required — signs/verifies login tokens; the backend refuses to boot in production with a
+      # missing, short, or placeholder-looking value. Generate with:
+      # node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"
+      - key: JWT_SECRET
+        sync: false
+      # Optional — AI-assisted chore import (image OCR + freeform text/PDF fallback). Uploaded
+      # content is sent to OpenAI when set; see docs/security-runbook.md before enabling.
+      # Leave unset to disable image import and use local-only text/PDF parsing.
+      # - key: OPENAI_API_KEY
+      #   sync: false
+      # Optional — Bitcoin allowance feature. BITCOIN_MNEMONIC/BITCOIN_XPRV control a real
+      # signing wallet (real money on mainnet). Generate offline; set only here in the Render
+      # dashboard, never in this file. Rotating requires sweeping funds first — see
+      # docs/security-runbook.md "Bitcoin hot wallet: key handling & rotation".
+      # - key: BITCOIN_NETWORK
+      #   value: testnet
+      # - key: BITCOIN_MNEMONIC
+      #   sync: false
+      # - key: BITCOIN_XPRV
+      #   sync: false
 
       # AI-assisted chore import is off by default. Enable only after reviewing the upload privacy
       # notes in README.md; both settings are required before content can be sent to OpenAI.

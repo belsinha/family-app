@@ -130,7 +130,7 @@ export default function PointLog({ childId, childName, onClose }: PointLogProps)
   });
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] flex flex-col">
         <div className="flex items-center justify-between p-6 border-b border-gray-200">
           <h2 className="text-2xl font-bold text-gray-900">
@@ -183,7 +183,7 @@ export default function PointLog({ childId, childName, onClose }: PointLogProps)
               </button>
             </div>
           </div>
-          <p className="text-sm text-gray-500 mt-2">All points with Bitcoin conversion history</p>
+          <p className="text-sm text-gray-500 mt-2">Task tracking and legacy points. Task entries do not affect Bitcoin allowance.</p>
         </div>
 
         <div className="flex-1 overflow-y-auto p-6">
@@ -263,6 +263,13 @@ export default function PointLog({ childId, childName, onClose }: PointLogProps)
                             {point.type}
                           </span>
                         </div>
+                        {point.source === 'task' && (
+                          <div className="text-sm text-gray-700 mb-2">
+                            <p>Task: {point.task_snapshot?.taskName} · {point.task_snapshot?.taskDate}</p>
+                            <p className="text-xs">Recorded by user {point.task_actor_id} · tracking only</p>
+                            {point.voided_at && <p className="text-amber-800">Voided: {point.void_reason} · excluded from totals</p>}
+                          </div>
+                        )}
                         {point.reason && (
                           <p className="text-sm text-gray-700 mb-2">{point.reason}</p>
                         )}

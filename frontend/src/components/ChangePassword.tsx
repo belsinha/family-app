@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { api } from '../utils/api';
+import { useAuth } from '../contexts/AuthContext';
 import type { ChangePasswordRequest } from '../../../shared/src/types';
 
 interface ChangePasswordProps {
@@ -7,7 +8,33 @@ interface ChangePasswordProps {
   onCancel?: () => void;
 }
 
+const PARENT_MIN_LENGTH = 10;
+
+/** Mirrors the role-aware policy enforced server-side in backend/src/utils/auth.ts. */
+function validateNewPassword(password: string, role: string | undefined, loginName: string | undefined): string | null {
+  if (role === 'child') {
+    if (password.length < 4) {
+      return 'New password must be at least 4 characters long';
+    }
+    return null;
+  }
+
+  if (password.length < PARENT_MIN_LENGTH) {
+    return `New password must be at least ${PARENT_MIN_LENGTH} characters long`;
+  }
+  const classes = [/[a-z]/, /[A-Z]/, /[0-9]/, /[^a-zA-Z0-9]/].filter((re) => re.test(password)).length;
+  if (classes < 3) {
+    return 'New password must include at least 3 of: lowercase, uppercase, number, symbol';
+  }
+  if (loginName && password.toLowerCase().includes(loginName.toLowerCase())) {
+    return 'New password must not contain your login name';
+  }
+  return null;
+}
+
 export default function ChangePassword({ onSuccess, onCancel }: ChangePasswordProps) {
+  const { user } = useAuth();
+  const isChild = user?.role === 'child';
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -21,8 +48,9 @@ export default function ChangePassword({ onSuccess, onCancel }: ChangePasswordPr
     e.preventDefault();
     setError('');
 
-    if (newPassword.length < 4) {
-      setError('New password must be at least 4 characters long');
+    const strengthError = validateNewPassword(newPassword, user?.role, user?.name);
+    if (strengthError) {
+      setError(strengthError);
       return;
     }
 
@@ -105,14 +133,19 @@ export default function ChangePassword({ onSuccess, onCancel }: ChangePasswordPr
           <label htmlFor="newPassword" className="block text-sm font-medium text-gray-700 mb-1">
             New Password
           </label>
+          {!isChild && (
+            <p className="text-xs text-gray-500 mb-1">
+              At least {PARENT_MIN_LENGTH} characters, with 3 of: lowercase, uppercase, number, symbol.
+            </p>
+          )}
           <div className="relative">
             <input
               id="newPassword"
               type={showNewPassword ? 'text' : 'password'}
               required
-              minLength={4}
+              minLength={isChild ? 4 : PARENT_MIN_LENGTH}
               className="appearance-none relative block w-full px-3 py-2 pr-10 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
-              placeholder="Enter new password (min 4 characters)"
+              placeholder={isChild ? 'Enter new password (min 4 characters)' : `Enter new password (min ${PARENT_MIN_LENGTH} characters)`}
               value={newPassword}
               onChange={(e) => setNewPassword(e.target.value)}
             />
@@ -144,7 +177,7 @@ export default function ChangePassword({ onSuccess, onCancel }: ChangePasswordPr
               id="confirmPassword"
               type={showConfirmPassword ? 'text' : 'password'}
               required
-              minLength={4}
+              minLength={isChild ? 4 : PARENT_MIN_LENGTH}
               className="appearance-none relative block w-full px-3 py-2 pr-10 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
               placeholder="Confirm new password"
               value={confirmPassword}

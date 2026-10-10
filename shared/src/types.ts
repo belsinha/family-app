@@ -19,6 +19,7 @@ export interface Child {
   name: string;
   user_id: number | null;
   house_id: number | null;
+  chore_member_id?: number | null;
 }
 
 export interface Point {
@@ -30,6 +31,16 @@ export interface Point {
   created_at: string;
   parent_id: number | null;
   parent_name?: string | null;
+  source?: 'legacy' | 'task';
+  task_instance_id?: number | null;
+  task_house_id?: number | null;
+  task_actor_id?: number | null;
+  task_snapshot?: { taskName: string; taskDate: string; householdMemberId: number } | null;
+  request_id?: string | null;
+  request_fingerprint?: string | null;
+  voided_at?: string | null;
+  voided_by?: number | null;
+  void_reason?: string | null;
 }
 
 export interface ChildBalance {
@@ -37,6 +48,15 @@ export interface ChildBalance {
   bonus: number;
   demerit: number;
   balance: number;
+}
+
+export interface AddTaskPointsRequest {
+  childId: number;
+  taskInstanceId: number;
+  points: number;
+  type: PointType;
+  reason: string;
+  requestId: string;
 }
 
 export interface ChildBitcoinBalance {

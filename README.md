@@ -187,13 +187,25 @@ If production logs show `Could not find the table 'public.challenges' in the sch
 ## Environment Variables
 
 ### Backend
-Create a `.env` file in the `backend/` directory (optional):
+Copy `backend/.env.example` to `backend/.env` and fill in your own values:
 ```
 PORT=3001
 NODE_ENV=development
 DATABASE_PATH=./data/family-app.db
 CHORES_DATABASE_URL=file:./data/chores.db
+SUPABASE_URL=https://your-project-ref.supabase.co
+SUPABASE_ANON_KEY=your_publishable_or_anon_key_here
+SUPABASE_SERVICE_ROLE_KEY=your_service_role_key_here
 ```
+`SUPABASE_URL` and `SUPABASE_ANON_KEY` (or `SUPABASE_PUBLISHABLE_KEY`) are **required** — the
+backend exits on startup if they're missing, in every environment including local dev. There is
+no hardcoded fallback project; see [Security](#security-rotate-the-supabase-key) and
+`backend/SUPABASE_SETUP.md`.
+
+**In production**, `JWT_SECRET` and `ALLOWED_ORIGINS` (or `PUBLIC_APP_ORIGIN`) are also required,
+and `CHORES_DATABASE_URL` must be an absolute path — the backend refuses to boot otherwise. See
+[Security: authentication posture](#security-authentication-posture) for the full production
+startup gate.
 
 **Render / PaaS:** The repo `render.yaml` attaches a **persistent disk** and sets `CHORES_DATABASE_URL` and `DATABASE_PATH` under that mount so **chore templates and the main SQLite DB survive deploys**. That requires a **paid** web instance (`plan: starter` or higher); Render does not offer persistent disks on the free tier. If you use `plan: free`, SQLite files under the app directory are **ephemeral** and will look “wiped” after each deploy. For local dev, keep `CHORES_DATABASE_URL=file:./data/chores.db` and `DATABASE_PATH=./data/family-app.db`. Do not use `file:/data/chores.db` — the app remaps that mistake to `backend/data/`, but fix wrong values in the dashboard when you see them.
 
@@ -227,6 +239,98 @@ Create a `.env` file in the `frontend/` directory (optional):
 VITE_API_URL=http://localhost:3001/api
 ```
 Omit `VITE_API_URL` for production builds that are served from the same host as the API (the app then uses `{origin}/api`). Keep it for local Vite on port 3000 or for a split static-site + API setup.
+
+## Security & operations
+
+Backups, key rotation (Supabase, the optional Bitcoin wallet, `JWT_SECRET`), log review, session
+revocation, data retention/deletion, and privacy handling for AI-parsed uploads are covered in
+[`docs/security-runbook.md`](docs/security-runbook.md). For how to report a security issue, see
+[`SECURITY.md`](SECURITY.md).
+
+## Security: rotate the Supabase key
+
+An earlier version of this repo hardcoded a shared development Supabase project URL and
+publishable (anon) key directly in `backend/src/config.ts` as a fallback, so the backend would
+silently connect to that shared project if `SUPABASE_URL`/`SUPABASE_ANON_KEY` weren't set. That
+fallback has been removed — the backend now requires its own env vars everywhere, including local
+dev (see `backend/.env.example`) — but the old key is still present in this repo's git history.
+
+**Before launching this app to production (or sharing the repo further), rotate/regenerate that
+key in the Supabase dashboard** (Settings > API), and confirm no code path still assumes a shared
+default project.
+
+## Security: authentication posture
+
+- **`JWT_SECRET` is required in production.** The backend exits on startup if `NODE_ENV=production`
+  and `JWT_SECRET` isn't set — see `backend/.env.example` for how to generate one. In dev it falls
+  back to an insecure placeholder so `npm run dev` still works without extra setup.
+- **Production startup security gate** (`backend/src/startupSecurityGate.ts`, wired into
+  `config.ts` and run before the app touches a socket or database): in production, the backend
+  refuses to boot (`process.exit(1)`, with every problem listed at once) unless:
+  - `JWT_SECRET` is at least 32 characters, isn't the dev-only placeholder, and doesn't look like a
+    placeholder/low-entropy value (e.g. `changeme...`, `aaaa...`, `abcabcabc...`).
+  - `SUPABASE_URL` is an `https://` URL and `SUPABASE_ANON_KEY`/`SUPABASE_PUBLISHABLE_KEY` is set —
+    neither may look like a value copied verbatim from `backend/.env.example`
+    (`your-project-ref...`, `your_publishable_or_anon_key_here`).
+  - `ALLOWED_ORIGINS` (or `PUBLIC_APP_ORIGIN`) is set to at least one origin — otherwise no browser
+    origin would be allowed at all, since the dev-only localhost allowlist doesn't apply in
+    production.
+  - `CHORES_DATABASE_URL` is set to an **absolute** `file:` path — a relative path resolves inside
+    the app directory on Render (and most PaaS) and is silently wiped on every deploy instead of
+    living on the persistent disk (see `render.yaml`). `DATABASE_PATH` (the legacy, unused sql.js
+    path — see `render.yaml`) is deliberately **not** gated, since blocking boot on dead config
+    would be a footgun for whoever removes it later.
+  This is a config-shape gate; it complements (and runs before) the credentials gate below, which
+  checks live account passwords after the database connects. Both are exercised end-to-end by
+  `backend/src/config.smoke.test.ts`, which spawns the real boot path with a battery of broken
+  production configs and asserts the process exits nonzero for each; `startupSecurityGate.test.ts`
+  unit-tests the underlying rules. Run both with `npm run test` (from `backend/`).
+- **Token lifetime is role-aware.** Parent/family (admin-equivalent) tokens expire in 12h in
+  production (7d in dev) via `JWT_EXPIRES_IN`; child tokens stay at 7d (`JWT_CHILD_EXPIRES_IN`) in
+  every environment on purpose — kids' accounts are low-privilege, so we optimize for not making
+  them re-login instead of shortening their session.
+- **Password policy is role-aware**, enforced in `/api/auth/change-password`: parent/family
+  accounts need 10+ characters with 3 of {lowercase, uppercase, digit, symbol}, can't reuse a
+  handful of common weak passwords, and can't contain the account's own login name. Child accounts
+  keep the original 4-character-minimum policy so a kid can still use their own name — that's an
+  intentional UX tradeoff for low-stakes accounts, not an oversight.
+- **bcrypt cost is 12** by default (`BCRYPT_COST` env, 10-15), up from the previous 10.
+- **Login names are normalized** (trimmed, internal whitespace collapsed, control characters
+  stripped, length-capped) before lookup, but matching stays case-sensitive — we deliberately did
+  *not* lowercase-fold names, since that would require also renaming existing stored users to stay
+  consistent, and getting that wrong locks people out.
+- **Logout today is client-side only**: it deletes the JWT from `localStorage` on that device.
+  There is no server-side revocation list — a JWT stays valid until it expires, even after
+  logout, a password change, or a role change elsewhere. The shortened production expiry above is
+  the practical mitigation for a leaked/stolen parent token. If you need to kill a specific
+  session immediately (lost device, suspected compromise), the only lever today is rotating
+  `JWT_SECRET`, which invalidates **every** user's token, forcing a full re-login. A proper
+  per-user revocation mechanism (e.g. a `token_version` column on `users`, embedded in the JWT and
+  checked per request) is a reasonable follow-up but is a real architectural change — it adds a DB
+  round-trip to every authenticated request, which `authenticate` middleware doesn't do today —
+  and Supabase schema changes in this repo are applied manually (see `SUPABASE_SETUP.md`), so it
+  wasn't added speculatively here.
+- **Seeded passwords are never a shared literal in production.** `backend/src/db/seed-supabase.ts`
+  generates a strong random password per parent (or takes `SEED_ROMMEL_PASSWORD` /
+  `SEED_CELIANE_PASSWORD` from env) and prints it once to the server log on first seed, instead of
+  the old shared literal `"password"`. In production, child accounts (`Isabel`, `Nicholas`,
+  `Laura`) get the same treatment — a strong random password (or `SEED_<NAME>_PASSWORD` override)
+  printed once — instead of the outside-production default of "their own name lowercase". This
+  only affects a **fresh, empty** database — if your production Supabase project was already
+  seeded, existing accounts keep whatever password they were set up with.
+  **Change every seeded password via "Change Password" right after first login.**
+- **Production boot gate**: on every production startup, `backend/src/db/productionCredentialCheck.ts`
+  queries all accounts and refuses to start the server (`process.exit(1)`) if any account's
+  password still matches a known demo/default value (a common weak password, or a child's own
+  name), or if there is no parent/admin account at all. This is defense-in-depth for the case
+  above — a prod database seeded before this check existed, or one where defaults were never
+  rotated. To remediate an already-live deployment that trips the gate (you need the app running
+  to call `/api/auth/change-password`), set `ALLOW_DEFAULT_CREDENTIALS=true` to downgrade the gate
+  to a warning for one boot, log in and fix the affected passwords, then remove the override.
+- **`seed.ts` (legacy sql.js/SQLite seeder) is dev-only.** It isn't wired into the app's normal
+  boot path (`server.ts` uses the Supabase seeder), but it now hard-throws if
+  `NODE_ENV=production` so it can't accidentally seed a production-adjacent environment with its
+  shared default parent password.
 
 ## Technology Stack
 
