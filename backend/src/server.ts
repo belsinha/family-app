@@ -13,6 +13,8 @@ import { getOrFetchPrice } from './services/bitcoin.js';
 import { getPublicApiBaseForClient } from './publicApiBase.js';
 import { resolveFrontendIndex, formatFrontendSearchList } from './resolveFrontendDist.js';
 import { startPublicHealthPing } from './keepAlive.js';
+import { createFamilyMcpRouter } from './mcp/router.js';
+import { loadMcpSettings } from './mcp/oauth.js';
 
 const frontendResolved = resolveFrontendIndex();
 const serveFrontend = frontendResolved != null;
@@ -20,6 +22,7 @@ const frontendDist = frontendResolved?.dist ?? '';
 const frontendIndex = frontendResolved?.index ?? '';
 
 const app = express();
+const mcpSettings = loadMcpSettings(process.env,config.jwt.secret);
 
 // Render (and most PaaS hosts) sit in front of this app as a single reverse-proxy hop; trust it
 // so req.ip reflects the real client (not the proxy) — this also keeps rate limiting keyed by
@@ -29,10 +32,12 @@ app.set('trust proxy', 1);
 
 // Middleware
 applySecurityMiddleware(app, {
-  allowedOrigins: config.cors.allowedOrigins,
+  allowedOrigins: [...config.cors.allowedOrigins,...(mcpSettings.enabled ? [mcpSettings.issuer] : [])],
   allowLocalhost: config.cors.allowLocalhost,
 });
 app.use(logger);
+// Disabled by default; OAuth endpoints and private tools share the existing backend only.
+app.use(createFamilyMcpRouter(mcpSettings));
 
 // Health check (before database init for quick health checks)
 app.get('/health', (req, res) => {
