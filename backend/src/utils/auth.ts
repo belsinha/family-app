@@ -22,7 +22,10 @@ export function generateToken(user: User): string {
 
 export function verifyToken(token: string): AuthTokenPayload | null {
   try {
-    return jwt.verify(token, config.jwt.secret) as AuthTokenPayload;
+    const payload = jwt.verify(token, config.jwt.secret, { algorithms: ['HS256'] });
+    if (typeof payload === 'string' || payload.purpose != null || !Number.isSafeInteger(payload.userId) || payload.userId <= 0
+      || !['parent','child','family'].includes(payload.role) || typeof payload.name !== 'string') return null;
+    return payload as AuthTokenPayload;
   } catch (error) {
     return null;
   }

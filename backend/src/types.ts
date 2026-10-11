@@ -31,7 +31,7 @@ export interface Point {
   created_at: string;
   parent_id: number | null;
   parent_name?: string | null;
-  source?: 'legacy' | 'task';
+  source?: 'legacy' | 'task' | 'manual';
   task_instance_id?: number | null;
   task_house_id?: number | null;
   task_actor_id?: number | null;
