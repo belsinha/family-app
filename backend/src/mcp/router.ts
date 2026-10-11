@@ -1,4 +1,9 @@
 import express, { Router } from "express";
+import {
+  productionSessionStore,
+  type SessionStore,
+  type Grant,
+} from "./sessionStore.js";
 import { randomBytes } from "node:crypto";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import {
@@ -39,6 +44,7 @@ export interface McpDependencies {
   ): Promise<{ userId: number; houseId: number } | null>;
   parent(userId: number, houseId: number): Promise<unknown>;
   tools: PointTools;
+  sessions?: SessionStore;
 }
 const production: McpDependencies = {
   login: async (name, password) => {
@@ -62,7 +68,6 @@ const production: McpDependencies = {
 };
 type Pending = { intent: AuthorizationIntent; csrf: string };
 type Code = { intent: AuthorizationIntent; identity: McpIdentity };
-type Refresh = { sessionId: string; identity: McpIdentity; expires: number };
 function escapeHtml(s: string) {
   return s.replace(
     /[&<>"']/g,
@@ -80,11 +85,7 @@ export function createFamilyMcpRouter(
   if (!settings.enabled) return router;
   const pending = new ExpiringStore<Pending>(10 * 60_000);
   const codes = new ExpiringStore<Code>(60_000);
-  // Single-instance bounded grants: rotation/revocation survive requests, not process restarts.
-  // Tokens are issued only after the owner personally authenticates and consents.
-  const sessions = new ExpiringStore<McpIdentity>(8 * 60 * 60_000);
-  const refreshTokens = new ExpiringStore<Refresh>(8 * 60 * 60_000);
-  const consumedRefresh = new ExpiringStore<string>(8 * 60 * 60_000, 20_000);
+  const sessions = deps.sessions ?? productionSessionStore(settings);
   const limited = createRateLimiter("Too many MCP requests", {
     windowMs: 60_000,
     limit: 60,
@@ -243,48 +244,32 @@ export function createFamilyMcpRouter(
         req.headers.authorization
       )
         return res.status(400).json({ error: "invalid_client" });
-      const response = (
-        identity: McpIdentity,
-        sessionId: string,
-        expires: number,
-      ) => ({
-        access_token: issueMcpToken(settings, { ...identity, sessionId }),
+      const response = (grant: Grant) => ({
+        access_token: issueMcpToken(settings, {
+          ...grant.identity,
+          sessionId: grant.sessionId,
+        }),
         token_type: "Bearer",
         expires_in: 900,
-        scope: identity.scopes.join(" "),
-        refresh_token: refreshTokens.put(
-          { identity, sessionId, expires },
-          expires,
-        ),
+        scope: grant.identity.scopes.join(" "),
+        refresh_token: grant.refreshToken,
       });
       if (b.grant_type === "refresh_token") {
         const token =
           typeof b.refresh_token === "string" ? b.refresh_token : "";
-        // A used token can be a stolen-token replay; revoke the whole lineage, even for concurrent reuse.
-        const reused = consumedRefresh.get(token);
-        if (reused) {
-          sessions.take(reused);
-          return res.status(400).json({ error: "invalid_grant" });
-        }
-        const grant = refreshTokens.get(token);
-        if (
-          !grant ||
-          grant.expires <= Date.now() ||
-          !sessions.get(grant.sessionId) ||
-          b.resource !== settings.resource ||
-          (b.scope != null && b.scope !== grant.identity.scopes.join(" "))
-        )
-          return res.status(400).json({ error: "invalid_grant" });
         try {
-          await deps.parent(grant.identity.userId, grant.identity.houseId);
-          if (!sessions.get(grant.sessionId) || !refreshTokens.take(token)) {
-            if (consumedRefresh.get(token)) sessions.take(grant.sessionId);
+          const identity = await sessions.inspect(token);
+          if (
+            !identity ||
+            b.resource !== settings.resource ||
+            (b.scope != null && b.scope !== identity.scopes.join(" "))
+          )
             return res.status(400).json({ error: "invalid_grant" });
-          }
-          consumedRefresh.remember(token, grant.sessionId, grant.expires);
-          return res.json(
-            response(grant.identity, grant.sessionId, grant.expires),
-          );
+          await deps.parent(identity.userId, identity.houseId);
+          const grant = await sessions.rotate(token);
+          return grant
+            ? res.json(response(grant))
+            : res.status(400).json({ error: "invalid_grant" });
         } catch {
           return res.status(400).json({ error: "invalid_grant" });
         }
@@ -303,9 +288,7 @@ export function createFamilyMcpRouter(
         await deps.parent(code.identity.userId, code.identity.houseId);
         if (!codes.take(key))
           return res.status(400).json({ error: "invalid_grant" });
-        const expires = Date.now() + 8 * 60 * 60_000,
-          sessionId = sessions.put(code.identity, expires);
-        return res.json(response(code.identity, sessionId, expires));
+        return res.json(response(await sessions.create(code.identity)));
       } catch {
         return res.status(400).json({ error: "invalid_grant" });
       }
@@ -315,7 +298,7 @@ export function createFamilyMcpRouter(
     "/mcp/oauth/revoke",
     express.urlencoded({ extended: false, limit: "8kb" }),
     limited,
-    (req, res) => {
+    async (req, res) => {
       const b = req.body ?? {};
       if (
         b.client_id !== settings.clientId ||
@@ -324,11 +307,14 @@ export function createFamilyMcpRouter(
       )
         return res.status(400).json({ error: "invalid_client" });
       const token = typeof b.token === "string" ? b.token : "";
-      const grant = refreshTokens.take(token);
-      const access = verifyMcpToken(settings, token);
-      const sessionId =
-        grant?.sessionId ?? consumedRefresh.get(token) ?? access?.sessionId;
-      if (sessionId) sessions.take(sessionId);
+      try {
+        await sessions.revoke(
+          token,
+          verifyMcpToken(settings, token)?.sessionId,
+        );
+      } catch {
+        return res.status(503).json({ error: "Revocation unavailable" });
+      }
       return res.status(200).end();
     },
   );
@@ -346,9 +332,9 @@ export function createFamilyMcpRouter(
         .status(401)
         .json({ error: "MCP OAuth authorization required" });
     };
-    if (!identity?.sessionId || !sessions.get(identity.sessionId))
-      return challenge();
     try {
+      if (!identity?.sessionId || !(await sessions.active(identity.sessionId)))
+        return challenge();
       await deps.parent(identity.userId, identity.houseId);
     } catch {
       return challenge();

@@ -19,9 +19,13 @@ import {
 } from "./oauth.js";
 
 const db = new PGlite();
+await db.exec(
+  "CREATE ROLE family_app_chores_runtime NOLOGIN NOINHERIT NOBYPASSRLS",
+);
 for (const path of [
   "../db/schema-postgres-supabase.sql",
   "../../../supabase/migrations/20261010201518_task_point_tracking.sql",
+  "../../../supabase/migrations/20261011200919_durable_mcp_oauth.sql",
   "../../../supabase/migrations/20261011210000_manual_point_tracking.sql",
 ]) {
   await db.exec(readFileSync(new URL(path, import.meta.url), "utf8"));
@@ -138,15 +142,22 @@ const settings: McpSettings = {
   issuer: "",
   clientId: "fixture-public-client",
   redirectUri: "https://chatgpt.com/connector_platform_oauth_redirect",
-  secret: randomBytes(32).toString('hex'), // Ephemeral test-only key; never persisted.
+  secret: randomBytes(32).toString("hex"), // Ephemeral test-only key; never persisted.
 };
 const { config } = await import("../config.js");
 config.jwt.secret = settings.secret; // Same signing key: token-purpose isolation must still hold.
+const { DatabaseSessionStore, SESSION_LIFETIME, SESSION_IDLE, tokenHash } =
+  await import("./sessionStore.js");
+const sqlDatabase = {
+  query: (sql: string, values?: unknown[]) => db.query(sql, values),
+  transaction: <T>(fn: (sql: any) => Promise<T>) => db.transaction(fn),
+};
 const app = express();
 const server = app.listen(0, "127.0.0.1");
 await new Promise<void>((resolve) => server.once("listening", resolve));
 settings.issuer = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
 settings.resource = `${settings.issuer}/mcp`;
+const durableSessions = new DatabaseSessionStore(sqlDatabase, settings);
 applySecurityMiddleware(app, {
   allowedOrigins: [settings.issuer],
   allowLocalhost: true,
@@ -158,6 +169,7 @@ app.use(
       name.startsWith("Fixture parent ")
         ? { userId: 1, houseId: 1 }
         : null,
+    sessions: durableSessions,
     parent: assertCurrentParent,
     tools: {
       children: visibleChildren,
@@ -283,7 +295,7 @@ test("configuration is opt-in, requires schema and exact HTTPS client/redirect c
 });
 test("OAuth PKCE exchange rejects changed resource/redirect/verifier, consumes code once, separates app tokens", async () => {
   const { code, verifier } = await authorizationCode();
-  const overrides: Record<string,string>[] = [
+  const overrides: Record<string, string>[] = [
     { resource: "https://attacker.example/mcp" },
     { redirect_uri: "https://attacker.example/cb" },
     { code_verifier: "x".repeat(43) },
@@ -689,14 +701,18 @@ test("refresh rotates, detects replay, and revocation terminates existing access
     401,
   );
 });
-test("refresh cannot extend the original eight-hour authorization lifetime", async (t) => {
+test("refresh cannot extend the original thirty-day authorization lifetime", async (t) => {
   const start = Date.now() + 120000;
   t.mock.timers.enable({ apis: ["Date"], now: start });
   const granted = await authorizationCode(SCOPES[0]);
   const original = (await (
     await exchange(granted.code, granted.verifier)
   ).json()) as any;
-  t.mock.timers.setTime(start + 8 * 3600000 - 60000);
+  await db.query(
+    "UPDATE family_oauth.sessions SET idle_until=expires_at WHERE id_hash=$1",
+    [tokenHash(verifyMcpToken(settings, original.access_token)!.sessionId!)],
+  );
+  t.mock.timers.setTime(start + SESSION_LIFETIME - 60000);
   const refresh = await fetch(`${settings.issuer}/mcp/oauth/token`, {
     method: "POST",
     headers: formHeaders,
@@ -710,7 +726,7 @@ test("refresh cannot extend the original eight-hour authorization lifetime", asy
   assert.equal(refresh.status, 200);
   const fresh = (await refresh.json()) as any;
   assert(verifyMcpToken(settings, fresh.access_token));
-  t.mock.timers.setTime(start + 8 * 3600000 + 1);
+  t.mock.timers.setTime(start + SESSION_LIFETIME + 1);
   assert(
     verifyMcpToken(settings, fresh.access_token),
     "JWT itself is still within fifteen minutes",
@@ -765,4 +781,52 @@ test("OAuth metadata, challenge, bounded ephemeral state and disabled router", a
   } finally {
     await new Promise<void>((resolve) => ds.close(() => resolve()));
   }
+});
+
+test("durable hashed grants survive store recreation, binding changes fail closed, idle expiry and revocation persist", async (t) => {
+  const grant = await durableSessions.create({
+    userId: 1,
+    houseId: 1,
+    scopes: [SCOPES[0]],
+  });
+  const restarted = new DatabaseSessionStore(sqlDatabase, settings);
+  assert(await restarted.active(grant.sessionId));
+  const persisted = await db.query(
+    "SELECT id_hash FROM family_oauth.sessions WHERE id_hash=$1",
+    [tokenHash(grant.sessionId)],
+  );
+  assert.equal(persisted.rows.length, 1);
+  const refresh = await db.query(
+    "SELECT token_hash FROM family_oauth.refresh_tokens WHERE token_hash=$1",
+    [tokenHash(grant.refreshToken)],
+  );
+  assert.equal(refresh.rows.length, 1);
+  assert.notEqual(
+    (refresh.rows[0] as { token_hash: string }).token_hash,
+    grant.refreshToken,
+  );
+  const other = new DatabaseSessionStore(sqlDatabase, {
+    ...settings,
+    clientId: "other-client",
+  });
+  assert.equal(await other.active(grant.sessionId), false);
+  assert.equal(await other.rotate(grant.refreshToken), null);
+  const rotated = await restarted.rotate(grant.refreshToken);
+  assert(rotated);
+  assert(await restarted.active(rotated.sessionId));
+  await new DatabaseSessionStore(sqlDatabase, settings).revoke(
+    "",
+    rotated.sessionId,
+  );
+  assert.equal(await durableSessions.active(grant.sessionId), false);
+  assert.equal(await durableSessions.active(rotated.sessionId), false);
+  assert.equal(await durableSessions.rotate(rotated.refreshToken), null);
+  const idle = await durableSessions.create({
+    userId: 1,
+    houseId: 1,
+    scopes: [SCOPES[0]],
+  });
+  t.mock.timers.enable({ apis: ["Date"], now: Date.now() + SESSION_IDLE + 1 });
+  assert.equal(await restarted.active(idle.sessionId), false);
+  assert.equal(await restarted.rotate(idle.refreshToken), null);
 });
