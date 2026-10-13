@@ -1,6 +1,7 @@
 import { parseArgs } from 'node:util';
 import { readSnapshot, importSnapshot, summary } from './chores-snapshot.mjs';
 import pg from 'pg';
+import { safeErrorCode, queryStage } from './chores-import-diagnostics.mjs';
 
 // Default is offline validation. No dotenv/config import, credential logging or startup side effects.
 const { values } = parseArgs({ options: {
@@ -9,10 +10,14 @@ const { values } = parseArgs({ options: {
   apply: { type: 'boolean', default: false },
 } });
 let client;
+let stage = 'source_validation';
+let failureStage;
+let failureCode;
 try {
   if (!values.source || !/^[a-f0-9]{64}$/.test(values['expected-sha'] ?? '')) throw new Error('Specify source and approved SHA-256.');
   const snapshot = await readSnapshot(values.source, values['expected-sha']);
   if (values.apply) {
+    stage = 'target_configuration';
     const houseId = Number(values['house-id']);
     const ref = values['project-ref'];
     const url = new URL(process.env.CHORES_DATABASE_URL ?? '');
@@ -23,11 +28,29 @@ try {
     // Remove Prisma's schema parameter before handing the URL to node-postgres.
     url.searchParams.delete('schema');
     client = new pg.Client({ connectionString: url.toString() });
+    stage = 'connect';
     await client.connect();
-    console.log(JSON.stringify(await importSnapshot(client, snapshot, houseId)));
+    const tracked = { async query(sql, params) {
+      // Preserve the original failure through the subsequent ROLLBACK.
+      if (!sql.startsWith('ROLLBACK')) stage = queryStage(sql);
+      try { return await client.query(sql, params); }
+      catch (error) {
+        failureStage ??= stage;
+        failureCode ??= safeErrorCode(error);
+        throw error;
+      }
+    } };
+    console.log(JSON.stringify(await importSnapshot(tracked, snapshot, houseId)));
   } else console.log(JSON.stringify({ mode: 'offline-dry-run', ...summary(snapshot) }));
-} catch {
+} catch (error) {
   // Driver errors may contain row values or connection details; do not print them.
-  console.error('Chores import failed. No partial import was committed. Check approved source, target access/schema and empty-target requirements privately.');
+  console.error(JSON.stringify({ status: 'import_not_confirmed', stage: failureStage ?? stage, code: failureCode ?? safeErrorCode(error) }));
+  console.error('Stop; verify destination state before retry. No credentials or driver details are logged.');
   process.exitCode = 1;
-} finally { await client?.end(); }
+} finally {
+  try { await client?.end(); }
+  catch (error) {
+    console.error(JSON.stringify({ status: 'disconnect_failed', stage: 'disconnect', code: safeErrorCode(error) }));
+    process.exitCode = 1;
+  }
+}

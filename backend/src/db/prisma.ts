@@ -5,6 +5,7 @@ import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'node:url';
 import { config } from '../config.js';
+import { supabasePrismaUrl } from './supabaseTls.js';
 
 const backendRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 
@@ -112,7 +113,7 @@ const globalForPrisma = globalThis as unknown as { prisma: PrismaClient };
 const postgresChores = /^postgres(ql)?:/.test(process.env.CHORES_DATABASE_URL ?? '');
 // Both clients implement the same chores models. Preserve route types and SQLite development.
 export const prisma: PrismaClient = globalForPrisma.prisma ?? (postgresChores
-  ? new PostgresPrismaClient() as unknown as PrismaClient
+  ? new PostgresPrismaClient({ datasources: { db: { url: supabasePrismaUrl(process.env.CHORES_DATABASE_URL!) } } }) as unknown as PrismaClient
   : new PrismaClient());
 
 export async function assertChoresStoreReady(): Promise<void> {

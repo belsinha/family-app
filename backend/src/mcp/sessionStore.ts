@@ -1,5 +1,6 @@
 import { createHash, randomBytes } from "node:crypto";
 import { Pool } from "pg";
+import { supabasePgOptions } from '../db/supabaseTls.js';
 import type { McpIdentity, McpSettings } from "./oauth.js";
 
 export const SESSION_LIFETIME = 30 * 24 * 60 * 60_000;
@@ -162,7 +163,7 @@ export function productionSessionStore(settings: McpSettings): SessionStore {
   if (!url || !/^postgres(ql)?:/.test(url))
     throw new Error("MCP requires durable PostgreSQL OAuth storage");
   pool ??= new Pool({
-    connectionString: url,
+    ...supabasePgOptions(url),
     max: 3,
     connectionTimeoutMillis: 5000,
     idleTimeoutMillis: 30000,
